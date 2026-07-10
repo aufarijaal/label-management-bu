@@ -1,20 +1,35 @@
-import { ThemeProvider } from '@mui/material/styles';
+import * as React from 'react';
+import { ThemeProvider, createTheme } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
-import { CacheProvider } from '@emotion/react';
-import theme from '../utils/theme';
-import createEmotionCache from '../utils/createEmotionCache';
+import { AuthProvider } from '../context/AuthContext';
+import { ColorModeProvider, ColorModeContext } from '../context/ColorModeContext';
 
-// Client-side cache, shared for the whole session of the user in the browser.
-const clientSideEmotionCache = createEmotionCache();
-
-export default function App({ Component, pageProps, emotionCache = clientSideEmotionCache }: any) {
+function ThemedApp({ Component, pageProps }: any) {
+    const { mode } = React.useContext(ColorModeContext);
+    const theme = React.useMemo(
+        () =>
+            createTheme({
+                palette: { mode },
+                typography: {
+                    fontFamily: '"Google Sans", "Google Sans Display", sans-serif',
+                },
+            }),
+        [mode]
+    );
     return (
-        <CacheProvider value={emotionCache}>
-            <ThemeProvider theme={theme}>
-                {/* CssBaseline kickstart an elegant, consistent, and simple baseline to build upon. */}
-                <CssBaseline />
+        <ThemeProvider theme={theme}>
+            <CssBaseline />
+            <AuthProvider>
                 <Component {...pageProps} />
-            </ThemeProvider>
-        </CacheProvider>
+            </AuthProvider>
+        </ThemeProvider>
+    );
+}
+
+export default function App({ Component, pageProps }: any) {
+    return (
+        <ColorModeProvider>
+            <ThemedApp Component={Component} pageProps={pageProps} />
+        </ColorModeProvider>
     );
 }
