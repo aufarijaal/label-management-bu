@@ -9,7 +9,15 @@ function ThemedApp({ Component, pageProps }: any) {
     const theme = React.useMemo(
         () =>
             createTheme({
-                palette: { mode },
+                palette: {
+                    mode,
+                    primary: {
+                        main: '#0097A7',    // Cyan-teal 700 — strong contrast on both light & dark
+                        light: '#4DD0E1',   // Cyan 300 — readable on dark backgrounds
+                        dark: '#006978',    // Cyan 900
+                        contrastText: '#ffffff',
+                    },
+                },
                 typography: {
                     fontFamily: '"Google Sans", "Google Sans Display", sans-serif',
                 },
