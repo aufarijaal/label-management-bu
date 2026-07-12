@@ -24,10 +24,12 @@ import TrendingUpIcon from '@mui/icons-material/TrendingUp';
 import GroupIcon from '@mui/icons-material/Group';
 import Brightness4Icon from '@mui/icons-material/Brightness4';
 import Brightness7Icon from '@mui/icons-material/Brightness7';
+import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import { useAuth } from '../context/AuthContext';
 import { useColorMode } from '../context/ColorModeContext';
 
 const DRAWER_WIDTH = 240;
+const DRAWER_WIDTH_COLLAPSED = 64;
 
 const navItems = [
     { label: 'Overview', icon: <DashboardIcon />, href: '/dashboard' },
@@ -43,6 +45,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
     const { mode, toggleColorMode } = useColorMode();
     const router = useRouter();
     const [mobileOpen, setMobileOpen] = React.useState(false);
+    const [sidebarOpen, setSidebarOpen] = React.useState(true);
 
     React.useEffect(() => {
         if (!loading && !user) {
@@ -69,64 +72,58 @@ export default function AppLayout({ children }: AppLayoutProps) {
     // Highlight the first nav item whose href matches the current pathname
     const activeIdx = navItems.findIndex((item) => item.href === router.pathname);
 
-    const DrawerContent = (
-        <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-            <Box sx={{ px: 3, py: 2.5, display: 'flex', alignItems: 'center' }}>
-                <LabelIcon sx={{ color: 'primary.main', mr: 1 }} />
-                <Typography variant="h6" fontWeight={700} color="primary.main">
-                    LabelManager
-                </Typography>
-            </Box>
+    const makeDrawerContent = (collapsed: boolean) => (
+        <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+            {/* Brand — same height as top bar via Toolbar */}
+            <Toolbar
+                disableGutters
+                sx={{
+                    px: collapsed ? 0 : 3,
+                    justifyContent: collapsed ? 'center' : 'flex-start',
+                    minHeight: { xs: 56, sm: 64 }
+                }}
+            >
+                <LabelIcon sx={{ color: 'primary.main', flexShrink: 0 }} />
+                {!collapsed && (
+                    <Typography variant="h6" fontWeight={700} color="primary.main" sx={{ ml: 1 }} noWrap>
+                        LabelManager
+                    </Typography>
+                )}
+            </Toolbar>
             <Divider />
             <List sx={{ flex: 1, px: 1, py: 2 }}>
                 {navItems.map((item, idx) => (
                     <ListItem key={item.label} disablePadding sx={{ mb: 0.5 }}>
-                        <ListItemButton
-                            selected={idx === activeIdx}
-                            onClick={() => router.push(item.href)}
-                            sx={{
-                                borderRadius: 2,
-                                '&.Mui-selected': {
-                                    bgcolor: 'primary.main',
-                                    color: '#fff',
-                                    '& .MuiListItemIcon-root': { color: '#fff' },
-                                    '&:hover': { bgcolor: 'primary.dark' }
-                                }
-                            }}
-                        >
-                            <ListItemIcon sx={{ minWidth: 36 }}>{item.icon}</ListItemIcon>
-                            <ListItemText
-                                primary={item.label}
-                                primaryTypographyProps={{ fontWeight: idx === activeIdx ? 600 : 400 }}
-                            />
-                        </ListItemButton>
+                        <Tooltip title={collapsed ? item.label : ''} placement="right">
+                            <ListItemButton
+                                selected={idx === activeIdx}
+                                onClick={() => router.push(item.href)}
+                                sx={{
+                                    borderRadius: 2,
+                                    justifyContent: collapsed ? 'center' : 'flex-start',
+                                    px: collapsed ? 1 : 2,
+                                    '&.Mui-selected': {
+                                        bgcolor: 'primary.main',
+                                        color: '#fff',
+                                        '& .MuiListItemIcon-root': { color: '#fff' },
+                                        '&:hover': { bgcolor: 'primary.dark' }
+                                    }
+                                }}
+                            >
+                                <ListItemIcon sx={{ minWidth: collapsed ? 'auto' : 36 }}>
+                                    {item.icon}
+                                </ListItemIcon>
+                                {!collapsed && (
+                                    <ListItemText
+                                        primary={item.label}
+                                        primaryTypographyProps={{ fontWeight: idx === activeIdx ? 600 : 400 }}
+                                    />
+                                )}
+                            </ListItemButton>
+                        </Tooltip>
                     </ListItem>
                 ))}
             </List>
-            <Divider />
-            <Box sx={{ p: 2, display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                <Avatar src={avatarUrl} sx={{ width: 36, height: 36, bgcolor: 'primary.main', fontSize: 14 }}>
-                    {initials}
-                </Avatar>
-                <Box sx={{ flex: 1, minWidth: 0 }}>
-                    <Typography variant="body2" fontWeight={600} noWrap>
-                        {displayName}
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary" noWrap>
-                        {user.email}
-                    </Typography>
-                </Box>
-                <Tooltip title={mode === 'dark' ? 'Light mode' : 'Dark mode'}>
-                    <IconButton size="small" onClick={toggleColorMode}>
-                        {mode === 'dark' ? <Brightness7Icon fontSize="small" /> : <Brightness4Icon fontSize="small" />}
-                    </IconButton>
-                </Tooltip>
-                <Tooltip title="Sign out">
-                    <IconButton size="small" onClick={handleSignOut}>
-                        <LogoutIcon fontSize="small" />
-                    </IconButton>
-                </Tooltip>
-            </Box>
         </Box>
     );
 
@@ -137,18 +134,21 @@ export default function AppLayout({ children }: AppLayoutProps) {
                 variant="permanent"
                 sx={{
                     display: { xs: 'none', md: 'block' },
-                    width: DRAWER_WIDTH,
+                    width: sidebarOpen ? DRAWER_WIDTH : DRAWER_WIDTH_COLLAPSED,
                     flexShrink: 0,
+                    transition: 'width 0.2s',
                     '& .MuiDrawer-paper': {
-                        width: DRAWER_WIDTH,
+                        width: sidebarOpen ? DRAWER_WIDTH : DRAWER_WIDTH_COLLAPSED,
                         boxSizing: 'border-box',
                         border: 'none',
                         borderRight: '1px solid',
-                        borderColor: 'divider'
+                        borderColor: 'divider',
+                        overflowX: 'hidden',
+                        transition: 'width 0.2s'
                     }
                 }}
             >
-                {DrawerContent}
+                {makeDrawerContent(!sidebarOpen)}
             </Drawer>
 
             {/* Sidebar — mobile */}
@@ -162,7 +162,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
                     '& .MuiDrawer-paper': { width: DRAWER_WIDTH }
                 }}
             >
-                {DrawerContent}
+                {makeDrawerContent(false)}
             </Drawer>
 
             {/* Main content */}
@@ -176,28 +176,64 @@ export default function AppLayout({ children }: AppLayoutProps) {
                     bgcolor: 'background.default'
                 }}
             >
-                {/* Top App Bar (mobile only) */}
+                {/* Top bar — always visible */}
                 <AppBar
                     position="static"
                     color="default"
                     elevation={0}
                     sx={{
-                        display: { xs: 'flex', md: 'none' },
                         borderBottom: '1px solid',
                         borderColor: 'divider',
                         bgcolor: 'background.paper'
                     }}
                 >
-                    <Toolbar>
-                        <IconButton edge="start" onClick={() => setMobileOpen(true)} sx={{ mr: 2 }}>
+                    <Toolbar sx={{ gap: 1 }}>
+                        {/* Sidebar toggle — desktop */}
+                        <IconButton
+                            edge="start"
+                            onClick={() => setSidebarOpen((v) => !v)}
+                            sx={{ display: { xs: 'none', md: 'flex' }, mr: 1 }}
+                        >
+                            {sidebarOpen ? <ChevronLeftIcon /> : <MenuIcon />}
+                        </IconButton>
+
+                        {/* Hamburger — mobile only */}
+                        <IconButton
+                            edge="start"
+                            onClick={() => setMobileOpen(true)}
+                            sx={{ display: { xs: 'flex', md: 'none' }, mr: 1 }}
+                        >
                             <MenuIcon />
                         </IconButton>
-                        <Typography variant="h6" fontWeight={700} color="primary.main" sx={{ flexGrow: 1 }}>
-                            LabelManager
-                        </Typography>
-                        <Avatar src={avatarUrl} sx={{ width: 32, height: 32, bgcolor: 'primary.main', fontSize: 12 }}>
-                            {initials}
-                        </Avatar>
+
+                        {/* Spacer */}
+                        <Box sx={{ flex: 1 }} />
+
+                        {/* Profile */}
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                            <Avatar src={avatarUrl} sx={{ width: 32, height: 32, bgcolor: 'primary.main', fontSize: 12 }}>
+                                {initials}
+                            </Avatar>
+                            <Box sx={{ display: { xs: 'none', sm: 'block' } }}>
+                                <Typography variant="body2" fontWeight={600} noWrap>
+                                    {displayName}
+                                </Typography>
+                            </Box>
+                        </Box>
+
+                        {/* Theme toggle */}
+                        <Tooltip title={mode === 'dark' ? 'Switch to light' : 'Switch to dark'}>
+                            <IconButton size="small" onClick={toggleColorMode}>
+                                {mode === 'dark' ? <Brightness7Icon fontSize="small" /> : <Brightness4Icon fontSize="small" />}
+                            </IconButton>
+                        </Tooltip>
+
+                        {/* Sign out */}
+                        <Tooltip title="Sign out">
+                            <IconButton size="small" onClick={handleSignOut}>
+                                <LogoutIcon fontSize="small" />
+                            </IconButton>
+                        </Tooltip>
                     </Toolbar>
                 </AppBar>
 

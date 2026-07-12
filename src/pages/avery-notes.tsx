@@ -23,12 +23,18 @@ import TablePagination from '@mui/material/TablePagination';
 import TableRow from '@mui/material/TableRow';
 import TableSortLabel from '@mui/material/TableSortLabel';
 import TextField from '@mui/material/TextField';
+import FormControl from '@mui/material/FormControl';
+import InputLabel from '@mui/material/InputLabel';
+import MenuItem from '@mui/material/MenuItem';
+import Select from '@mui/material/Select';
 import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
-import NoteAltIcon from '@mui/icons-material/NoteAlt';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import ClearIcon from '@mui/icons-material/Clear';
-import SearchIcon from '@mui/icons-material/Search';
 import ListAltIcon from '@mui/icons-material/ListAlt';
+import NoteAltIcon from '@mui/icons-material/NoteAlt';
+import RadioButtonUncheckedIcon from '@mui/icons-material/RadioButtonUnchecked';
+import SearchIcon from '@mui/icons-material/Search';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabaseClient';
 import AppLayout from '../components/AppLayout';
@@ -40,7 +46,23 @@ interface AveryNoteItem {
     remark: string | null;
     print_qty: number | null;
     created_at: string | null;
+    dept: string | null;
+    done: boolean | null;
 }
+
+const DEPT_LABELS: Record<string, string> = {
+    a: 'Assembling',
+    s: 'Sewing',
+    c: 'Cutting',
+    o: 'Other',
+};
+
+const DEPT_COLORS: Record<string, 'primary' | 'secondary' | 'warning' | 'default'> = {
+    a: 'primary',
+    s: 'secondary',
+    c: 'warning',
+    o: 'default',
+};
 
 type Order = 'asc' | 'desc';
 type OrderByKey = keyof AveryNoteItem;
@@ -85,6 +107,8 @@ export default function AveryNotesPage() {
     const [multiPoText, setMultiPoText] = React.useState('');
     const [multiPoList, setMultiPoList] = React.useState<string[]>([]);
     const [multiPoNotFound, setMultiPoNotFound] = React.useState<string[]>([]);
+    const [deptFilter, setDeptFilter] = React.useState<string>('');
+    const [doneFilter, setDoneFilter] = React.useState<string>('all');
     const [order, setOrder] = React.useState<Order>('asc');
     const [orderBy, setOrderBy] = React.useState<OrderByKey>('seq');
     const [page, setPage] = React.useState(0);
@@ -97,7 +121,7 @@ export default function AveryNotesPage() {
             setFetchError(null);
             const { data, error } = await supabase
                 .from('ila_avery_note_items')
-                .select('id, seq, po_no, remark, print_qty, created_at')
+                .select('id, seq, po_no, remark, print_qty, created_at, dept, done')
                 .order('seq', { ascending: true });
             if (error) {
                 setFetchError(error.message);
@@ -144,9 +168,14 @@ export default function AveryNotesPage() {
                 const poNorm = (r.po_no ?? '').toLowerCase();
                 if (!multiPoList.some((p) => poNorm === p)) return false;
             }
+            if (deptFilter) {
+                if ((r.dept ?? 'o') !== deptFilter) return false;
+            }
+            if (doneFilter === 'done' && !r.done) return false;
+            if (doneFilter === 'pending' && r.done) return false;
             return true;
         });
-    }, [rows, search, dateFrom, dateTo, multiPoList]);
+    }, [rows, search, dateFrom, dateTo, multiPoList, deptFilter, doneFilter]);
 
     const sortedRows = React.useMemo(
         () => [...filteredRows].sort(getComparator(order, orderBy)),
@@ -249,6 +278,32 @@ export default function AveryNotesPage() {
                                             </IconButton>
                                         </Tooltip>
                                     )}
+                                    <FormControl size="small" sx={{ minWidth: 140 }}>
+                                        <InputLabel>Department</InputLabel>
+                                        <Select
+                                            value={deptFilter}
+                                            label="Department"
+                                            onChange={(e) => { setDeptFilter(e.target.value); setPage(0); }}
+                                        >
+                                            <MenuItem value="">All Departments</MenuItem>
+                                            <MenuItem value="a">Assembling</MenuItem>
+                                            <MenuItem value="s">Sewing</MenuItem>
+                                            <MenuItem value="c">Cutting</MenuItem>
+                                            <MenuItem value="o">Other</MenuItem>
+                                        </Select>
+                                    </FormControl>
+                                    <FormControl size="small" sx={{ minWidth: 130 }}>
+                                        <InputLabel>Status</InputLabel>
+                                        <Select
+                                            value={doneFilter}
+                                            label="Status"
+                                            onChange={(e) => { setDoneFilter(e.target.value); setPage(0); }}
+                                        >
+                                            <MenuItem value="all">All Items</MenuItem>
+                                            <MenuItem value="done">Completed</MenuItem>
+                                            <MenuItem value="pending">Pending</MenuItem>
+                                        </Select>
+                                    </FormControl>
                                 </Box>
 
                                 {fetchError && (
@@ -272,6 +327,7 @@ export default function AveryNotesPage() {
                                     <Table size="small" stickyHeader>
                                         <TableHead>
                                             <TableRow>
+                                                <TableCell sx={{ fontWeight: 700, whiteSpace: 'nowrap', width: 48 }}>#</TableCell>
                                                 <TableCell sx={{ fontWeight: 700, whiteSpace: 'nowrap' }}>
                                                     <TableSortLabel
                                                         active={orderBy === 'seq'}
@@ -317,30 +373,49 @@ export default function AveryNotesPage() {
                                                         Created At
                                                     </TableSortLabel>
                                                 </TableCell>
+                                                <TableCell sx={{ fontWeight: 700, whiteSpace: 'nowrap' }}>
+                                                    <TableSortLabel
+                                                        active={orderBy === 'dept'}
+                                                        direction={orderBy === 'dept' ? order : 'asc'}
+                                                        onClick={() => handleRequestSort('dept')}
+                                                    >
+                                                        Department
+                                                    </TableSortLabel>
+                                                </TableCell>
+                                                <TableCell sx={{ fontWeight: 700, whiteSpace: 'nowrap' }} align="center">
+                                                    <TableSortLabel
+                                                        active={orderBy === 'done'}
+                                                        direction={orderBy === 'done' ? order : 'asc'}
+                                                        onClick={() => handleRequestSort('done')}
+                                                    >
+                                                        Status
+                                                    </TableSortLabel>
+                                                </TableCell>
                                             </TableRow>
                                         </TableHead>
                                         <TableBody>
                                             {fetching ? (
                                                 <TableRow>
-                                                    <TableCell colSpan={5} align="center" sx={{ py: 6 }}>
+                                                    <TableCell colSpan={8} align="center" sx={{ py: 6 }}>
                                                         <CircularProgress size={32} />
                                                     </TableCell>
                                                 </TableRow>
                                             ) : paginatedRows.length === 0 ? (
                                                 <TableRow>
-                                                    <TableCell colSpan={5} align="center" sx={{ py: 6 }}>
+                                                    <TableCell colSpan={8} align="center" sx={{ py: 6 }}>
                                                         <Typography variant="body2" color="text.secondary">
                                                             {search || dateFrom || dateTo ? 'No records match your filters.' : 'No records found.'}
                                                         </Typography>
                                                     </TableCell>
                                                 </TableRow>
                                             ) : (
-                                                paginatedRows.map((row) => (
+                                                paginatedRows.map((row, index) => (
                                                     <TableRow
                                                         key={row.id}
                                                         hover
                                                         sx={{ '&:last-child td': { borderBottom: 0 } }}
                                                     >
+                                                        <TableCell sx={{ color: 'text.secondary' }}>{page * rowsPerPage + index + 1}</TableCell>
                                                         <TableCell>{row.seq ?? '—'}</TableCell>
                                                         <TableCell>
                                                             <Typography variant="body2" fontWeight={500}>
@@ -364,6 +439,21 @@ export default function AveryNotesPage() {
                                                             <Typography variant="caption" color="text.secondary">
                                                                 {formatDateTime(row.created_at)}
                                                             </Typography>
+                                                        </TableCell>
+                                                        <TableCell>
+                                                            {row.dept ? (
+                                                                <Chip
+                                                                    label={DEPT_LABELS[row.dept] ?? row.dept}
+                                                                    size="small"
+                                                                    color={DEPT_COLORS[row.dept] ?? 'default'}
+                                                                    variant="outlined"
+                                                                />
+                                                            ) : '—'}
+                                                        </TableCell>
+                                                        <TableCell align="center">
+                                                            {row.done
+                                                                ? <CheckCircleIcon fontSize="small" sx={{ color: 'success.main' }} />
+                                                                : <RadioButtonUncheckedIcon fontSize="small" sx={{ color: 'text.disabled' }} />}
                                                         </TableCell>
                                                     </TableRow>
                                                 ))
