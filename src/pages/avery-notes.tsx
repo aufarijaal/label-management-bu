@@ -38,31 +38,23 @@ import SearchIcon from '@mui/icons-material/Search';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabaseClient';
 import AppLayout from '../components/AppLayout';
+import type { AveryNoteItem, Department, InputType } from '../types';
 
-interface AveryNoteItem {
-    id: string;
-    seq: number | null;
-    po_no: string | null;
-    remark: string | null;
-    print_qty: number | null;
-    created_at: string | null;
-    dept: string | null;
-    done: boolean | null;
+const CHIP_COLORS: Array<'primary' | 'secondary' | 'warning' | 'success' | 'info' | 'error'> = [
+    'primary',
+    'secondary',
+    'warning',
+    'success',
+    'info',
+    'error',
+];
+
+function colorForId(id: string | null): 'primary' | 'secondary' | 'warning' | 'success' | 'info' | 'error' | 'default' {
+    if (!id) return 'default';
+    let hash = 0;
+    for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) >>> 0;
+    return CHIP_COLORS[hash % CHIP_COLORS.length];
 }
-
-const DEPT_LABELS: Record<string, string> = {
-    a: 'Assembling',
-    s: 'Sewing',
-    c: 'Cutting',
-    o: 'Other',
-};
-
-const DEPT_COLORS: Record<string, 'primary' | 'secondary' | 'warning' | 'default'> = {
-    a: 'primary',
-    s: 'secondary',
-    c: 'warning',
-    o: 'default',
-};
 
 type Order = 'asc' | 'desc';
 type OrderByKey = keyof AveryNoteItem;
@@ -97,6 +89,8 @@ export default function AveryNotesPage() {
     const { user } = useAuth();
 
     const [rows, setRows] = React.useState<AveryNoteItem[]>([]);
+    const [departments, setDepartments] = React.useState<Department[]>([]);
+    const [inputTypes, setInputTypes] = React.useState<InputType[]>([]);
     const [fetching, setFetching] = React.useState(true);
     const [fetchError, setFetchError] = React.useState<string | null>(null);
 
@@ -108,26 +102,42 @@ export default function AveryNotesPage() {
     const [multiPoList, setMultiPoList] = React.useState<string[]>([]);
     const [multiPoNotFound, setMultiPoNotFound] = React.useState<string[]>([]);
     const [deptFilter, setDeptFilter] = React.useState<string>('');
+    const [inputFilter, setInputFilter] = React.useState<string>('');
     const [doneFilter, setDoneFilter] = React.useState<string>('all');
     const [order, setOrder] = React.useState<Order>('asc');
     const [orderBy, setOrderBy] = React.useState<OrderByKey>('seq');
     const [page, setPage] = React.useState(0);
     const [rowsPerPage, setRowsPerPage] = React.useState(10);
 
+    const deptMap = React.useMemo(
+        () => Object.fromEntries(departments.map((d) => [d.id, d.title])),
+        [departments]
+    );
+    const inputMap = React.useMemo(
+        () => Object.fromEntries(inputTypes.map((t) => [t.id, t.title])),
+        [inputTypes]
+    );
+
     React.useEffect(() => {
         if (!user) return;
         async function fetchData() {
             setFetching(true);
             setFetchError(null);
-            const { data, error } = await supabase
-                .from('ila_avery_note_items')
-                .select('id, seq, po_no, remark, print_qty, created_at, dept, done')
-                .order('seq', { ascending: true });
-            if (error) {
-                setFetchError(error.message);
+            const [itemsRes, deptRes, inputRes] = await Promise.all([
+                supabase
+                    .from('ila_avery_note_items')
+                    .select('id, seq, po_no, remark, print_qty, created_at, done, input_id, dept_id, returned')
+                    .order('seq', { ascending: true }),
+                supabase.from('departments').select('id, title').order('title', { ascending: true }),
+                supabase.from('input_type').select('id, title').order('title', { ascending: true }),
+            ]);
+            if (itemsRes.error) {
+                setFetchError(itemsRes.error.message);
             } else {
-                setRows(data ?? []);
+                setRows(itemsRes.data ?? []);
             }
+            setDepartments(deptRes.data ?? []);
+            setInputTypes(inputRes.data ?? []);
             setFetching(false);
         }
         fetchData();
@@ -169,13 +179,16 @@ export default function AveryNotesPage() {
                 if (!multiPoList.some((p) => poNorm === p)) return false;
             }
             if (deptFilter) {
-                if ((r.dept ?? 'o') !== deptFilter) return false;
+                if (r.dept_id !== deptFilter) return false;
+            }
+            if (inputFilter) {
+                if (r.input_id !== inputFilter) return false;
             }
             if (doneFilter === 'done' && !r.done) return false;
             if (doneFilter === 'pending' && r.done) return false;
             return true;
         });
-    }, [rows, search, dateFrom, dateTo, multiPoList, deptFilter, doneFilter]);
+    }, [rows, search, dateFrom, dateTo, multiPoList, deptFilter, inputFilter, doneFilter]);
 
     const sortedRows = React.useMemo(
         () => [...filteredRows].sort(getComparator(order, orderBy)),
@@ -286,10 +299,22 @@ export default function AveryNotesPage() {
                                             onChange={(e) => { setDeptFilter(e.target.value); setPage(0); }}
                                         >
                                             <MenuItem value="">All Departments</MenuItem>
-                                            <MenuItem value="a">Assembling</MenuItem>
-                                            <MenuItem value="s">Sewing</MenuItem>
-                                            <MenuItem value="c">Cutting</MenuItem>
-                                            <MenuItem value="o">Other</MenuItem>
+                                            {departments.map((d) => (
+                                                <MenuItem key={d.id} value={d.id}>{d.title}</MenuItem>
+                                            ))}
+                                        </Select>
+                                    </FormControl>
+                                    <FormControl size="small" sx={{ minWidth: 140 }}>
+                                        <InputLabel>Input Type</InputLabel>
+                                        <Select
+                                            value={inputFilter}
+                                            label="Input Type"
+                                            onChange={(e) => { setInputFilter(e.target.value); setPage(0); }}
+                                        >
+                                            <MenuItem value="">All Input Types</MenuItem>
+                                            {inputTypes.map((t) => (
+                                                <MenuItem key={t.id} value={t.id}>{t.title}</MenuItem>
+                                            ))}
                                         </Select>
                                     </FormControl>
                                     <FormControl size="small" sx={{ minWidth: 130 }}>
@@ -364,6 +389,15 @@ export default function AveryNotesPage() {
                                                         Print Qty
                                                     </TableSortLabel>
                                                 </TableCell>
+                                                <TableCell sx={{ fontWeight: 700, whiteSpace: 'nowrap' }} align="right">
+                                                    <TableSortLabel
+                                                        active={orderBy === 'returned'}
+                                                        direction={orderBy === 'returned' ? order : 'asc'}
+                                                        onClick={() => handleRequestSort('returned')}
+                                                    >
+                                                        Returned
+                                                    </TableSortLabel>
+                                                </TableCell>
                                                 <TableCell sx={{ fontWeight: 700, whiteSpace: 'nowrap' }}>
                                                     <TableSortLabel
                                                         active={orderBy === 'created_at'}
@@ -375,11 +409,20 @@ export default function AveryNotesPage() {
                                                 </TableCell>
                                                 <TableCell sx={{ fontWeight: 700, whiteSpace: 'nowrap' }}>
                                                     <TableSortLabel
-                                                        active={orderBy === 'dept'}
-                                                        direction={orderBy === 'dept' ? order : 'asc'}
-                                                        onClick={() => handleRequestSort('dept')}
+                                                        active={orderBy === 'dept_id'}
+                                                        direction={orderBy === 'dept_id' ? order : 'asc'}
+                                                        onClick={() => handleRequestSort('dept_id')}
                                                     >
                                                         Department
+                                                    </TableSortLabel>
+                                                </TableCell>
+                                                <TableCell sx={{ fontWeight: 700, whiteSpace: 'nowrap' }}>
+                                                    <TableSortLabel
+                                                        active={orderBy === 'input_id'}
+                                                        direction={orderBy === 'input_id' ? order : 'asc'}
+                                                        onClick={() => handleRequestSort('input_id')}
+                                                    >
+                                                        Input Type
                                                     </TableSortLabel>
                                                 </TableCell>
                                                 <TableCell sx={{ fontWeight: 700, whiteSpace: 'nowrap' }} align="center">
@@ -396,13 +439,13 @@ export default function AveryNotesPage() {
                                         <TableBody>
                                             {fetching ? (
                                                 <TableRow>
-                                                    <TableCell colSpan={8} align="center" sx={{ py: 6 }}>
+                                                    <TableCell colSpan={10} align="center" sx={{ py: 6 }}>
                                                         <CircularProgress size={32} />
                                                     </TableCell>
                                                 </TableRow>
                                             ) : paginatedRows.length === 0 ? (
                                                 <TableRow>
-                                                    <TableCell colSpan={8} align="center" sx={{ py: 6 }}>
+                                                    <TableCell colSpan={10} align="center" sx={{ py: 6 }}>
                                                         <Typography variant="body2" color="text.secondary">
                                                             {search || dateFrom || dateTo ? 'No records match your filters.' : 'No records found.'}
                                                         </Typography>
@@ -435,17 +478,28 @@ export default function AveryNotesPage() {
                                                                 variant="outlined"
                                                             />
                                                         </TableCell>
+                                                        <TableCell align="right">{row.returned ?? '—'}</TableCell>
                                                         <TableCell sx={{ whiteSpace: 'nowrap' }}>
                                                             <Typography variant="caption" color="text.secondary">
                                                                 {formatDateTime(row.created_at)}
                                                             </Typography>
                                                         </TableCell>
                                                         <TableCell>
-                                                            {row.dept ? (
+                                                            {row.dept_id ? (
                                                                 <Chip
-                                                                    label={DEPT_LABELS[row.dept] ?? row.dept}
+                                                                    label={deptMap[row.dept_id] ?? row.dept_id}
                                                                     size="small"
-                                                                    color={DEPT_COLORS[row.dept] ?? 'default'}
+                                                                    color={colorForId(row.dept_id)}
+                                                                    variant="outlined"
+                                                                />
+                                                            ) : '—'}
+                                                        </TableCell>
+                                                        <TableCell>
+                                                            {row.input_id ? (
+                                                                <Chip
+                                                                    label={inputMap[row.input_id] ?? row.input_id}
+                                                                    size="small"
+                                                                    color={colorForId(row.input_id)}
                                                                     variant="outlined"
                                                                 />
                                                             ) : '—'}

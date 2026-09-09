@@ -34,6 +34,8 @@ const DRAWER_WIDTH_COLLAPSED = 64;
 const navItems = [
     { label: 'Overview', icon: <DashboardIcon />, href: '/dashboard' },
     { label: 'ILA Avery Notes', icon: <NoteAltIcon />, href: '/avery-notes' },
+    { label: 'Departments', icon: <GroupIcon />, href: '/departments' },
+    { label: 'Input Types', icon: <SettingsIcon />, href: '/input-types' },
 ];
 
 interface AppLayoutProps {

@@ -37,20 +37,17 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabaseClient';
 import AppLayout from '../components/AppLayout';
+import type { Department } from '../types';
 
-const DEPT_LABELS: Record<string, string> = {
-    a: 'Assembling',
-    s: 'Sewing',
-    c: 'Cutting',
-    o: 'Other',
-};
+const UNASSIGNED_KEY = '__unassigned__';
 
-const DEPT_COLORS: Record<string, string> = {
-    a: '#0097A7',
-    s: '#34A853',
-    c: '#FBBC05',
-    o: '#EA4335',
-};
+const CHART_COLOR_PALETTE = ['#0097A7', '#34A853', '#FBBC05', '#EA4335', '#8E24AA', '#3949AB'];
+
+function colorForDeptId(id: string): string {
+    let hash = 0;
+    for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) >>> 0;
+    return CHART_COLOR_PALETTE[hash % CHART_COLOR_PALETTE.length];
+}
 
 const DATE_RANGE_OPTIONS = [
     { value: 1, label: 'Past 1 Month' },
@@ -70,8 +67,14 @@ export default function DashboardPage() {
     const { user } = useAuth();
     const displayName = user?.user_metadata?.full_name ?? user?.email ?? 'User';
 
+    const [departments, setDepartments] = React.useState<Department[]>([]);
+    const deptMap = React.useMemo(
+        () => Object.fromEntries(departments.map((d) => [d.id, d.title])),
+        [departments]
+    );
+
     const [dateRange, setDateRange] = React.useState(3);
-    const [chartData, setChartData] = React.useState<ChartRow[]>([]);
+    const [rawTotals, setRawTotals] = React.useState<Record<string, number>>({});
     const [totalPrinted, setTotalPrinted] = React.useState(0);
     const [chartLoading, setChartLoading] = React.useState(true);
 
@@ -79,7 +82,26 @@ export default function DashboardPage() {
     const [statsLoading, setStatsLoading] = React.useState(true);
     const [totalAllTime, setTotalAllTime] = React.useState(0);
     const [pendingCount, setPendingCount] = React.useState(0);
-    const [topDept, setTopDept] = React.useState<string>('—');
+    const [topDeptId, setTopDeptId] = React.useState<string | null>(null);
+
+    const chartData = React.useMemo<ChartRow[]>(() => {
+        return Object.entries(rawTotals)
+            .map(([dept, total]) => ({
+                dept,
+                label: dept === UNASSIGNED_KEY ? 'Unassigned' : (deptMap[dept] ?? dept),
+                total,
+                color: dept === UNASSIGNED_KEY ? '#9E9E9E' : colorForDeptId(dept),
+            }))
+            .sort((a, b) => b.total - a.total);
+    }, [rawTotals, deptMap]);
+
+    React.useEffect(() => {
+        async function fetchDepartments() {
+            const { data } = await supabase.from('departments').select('id, title');
+            setDepartments(data ?? []);
+        }
+        fetchDepartments();
+    }, []);
 
     React.useEffect(() => {
         async function fetchStats() {
@@ -87,7 +109,7 @@ export default function DashboardPage() {
 
             const { data, error } = await supabase
                 .from('ila_avery_note_items')
-                .select('print_qty, done, dept');
+                .select('print_qty, done, dept_id');
 
             if (error || !data) {
                 setStatsLoading(false);
@@ -101,7 +123,7 @@ export default function DashboardPage() {
             for (const row of data) {
                 total += row.print_qty ?? 0;
                 if (row.done === false) pending += 1;
-                const key = row.dept ?? 'o';
+                const key = row.dept_id ?? UNASSIGNED_KEY;
                 deptTotals[key] = (deptTotals[key] ?? 0) + (row.print_qty ?? 0);
             }
 
@@ -109,7 +131,7 @@ export default function DashboardPage() {
 
             setTotalAllTime(total);
             setPendingCount(pending);
-            setTopDept(topKey ? (DEPT_LABELS[topKey] ?? topKey) : '—');
+            setTopDeptId(topKey);
             setStatsLoading(false);
         }
 
@@ -124,11 +146,11 @@ export default function DashboardPage() {
 
             const { data, error } = await supabase
                 .from('ila_avery_note_items')
-                .select('dept, print_qty')
+                .select('dept_id, print_qty')
                 .gte('created_at', from.toISOString());
 
             if (error || !data) {
-                setChartData([]);
+                setRawTotals({});
                 setChartLoading(false);
                 return;
             }
@@ -136,20 +158,12 @@ export default function DashboardPage() {
             const totals: Record<string, number> = {};
             let grandTotal = 0;
             for (const row of data) {
-                const key = row.dept ?? 'o';
+                const key = row.dept_id ?? UNASSIGNED_KEY;
                 totals[key] = (totals[key] ?? 0) + (row.print_qty ?? 0);
                 grandTotal += row.print_qty ?? 0;
             }
 
-            const rows: ChartRow[] = Object.entries(totals).map(([dept, total]) => ({
-                dept,
-                label: DEPT_LABELS[dept] ?? dept,
-                total,
-                color: DEPT_COLORS[dept] ?? '#9E9E9E',
-            }));
-
-            rows.sort((a, b) => b.total - a.total);
-            setChartData(rows);
+            setRawTotals(totals);
             setTotalPrinted(grandTotal);
             setChartLoading(false);
         }
@@ -181,7 +195,7 @@ export default function DashboardPage() {
                     {[
                         { label: 'Total Labels Requested', value: totalAllTime.toLocaleString(), icon: <LabelIcon fontSize="large" />, color: '#0097A7', loading: statsLoading },
                         { label: 'Requests Still Pending', value: pendingCount.toLocaleString(), icon: <PendingActionsIcon fontSize="large" />, color: '#FBBC05', loading: statsLoading },
-                        { label: 'Most Active Department', value: topDept, icon: <GroupIcon fontSize="large" />, color: '#EA4335', loading: statsLoading },
+                        { label: 'Most Active Department', value: topDeptId ? (deptMap[topDeptId] ?? topDeptId) : '—', icon: <GroupIcon fontSize="large" />, color: '#EA4335', loading: statsLoading },
                     ].map((stat) => (
                         <Grid item xs={12} sm={6} lg={3} key={stat.label}>
                             <Card
