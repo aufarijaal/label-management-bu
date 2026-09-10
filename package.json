@@ -24,7 +24,8 @@
         "next": "^16.1.6",
         "react": "^19.2.1",
         "react-dom": "^19.2.1",
-        "recharts": "^3.9.2"
+        "recharts": "^3.9.2",
+        "xlsx": "^0.18.5"
     },
     "devDependencies": {
         "@types/glob": "^9.0.0",

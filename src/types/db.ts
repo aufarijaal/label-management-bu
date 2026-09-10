@@ -21,4 +21,6 @@ export type AveryNoteItem = {
     input_id: string | null;
     dept_id: string | null;
     returned: number | null;
+    short_group_code: string | null;
+    label_id: string | null;
 };

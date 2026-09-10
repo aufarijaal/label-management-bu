@@ -14,13 +14,13 @@ import ListItem from '@mui/material/ListItem';
 import ListItemIcon from '@mui/material/ListItemIcon';
 import ListItemText from '@mui/material/ListItemText';
 import MenuItem from '@mui/material/MenuItem';
-import Select from '@mui/material/Select';
+import Select, { type SelectChangeEvent } from '@mui/material/Select';
+import Checkbox from '@mui/material/Checkbox';
 import FormControl from '@mui/material/FormControl';
 import InputLabel from '@mui/material/InputLabel';
 import Typography from '@mui/material/Typography';
 import LabelIcon from '@mui/icons-material/Label';
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
-import PendingActionsIcon from '@mui/icons-material/PendingActions';
 import GroupIcon from '@mui/icons-material/Group';
 import PrintIcon from '@mui/icons-material/Print';
 import {
@@ -37,7 +37,7 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabaseClient';
 import AppLayout from '../components/AppLayout';
-import type { Department } from '../types';
+import type { Department, InputType } from '../types';
 
 const UNASSIGNED_KEY = '__unassigned__';
 
@@ -73,27 +73,90 @@ export default function DashboardPage() {
         [departments]
     );
 
+    const [inputTypes, setInputTypes] = React.useState<InputType[]>([]);
+    const inputTypeMap = React.useMemo(
+        () => Object.fromEntries(inputTypes.map((t) => [t.id, t.title])),
+        [inputTypes]
+    );
+
     const [dateRange, setDateRange] = React.useState(3);
-    const [rawTotals, setRawTotals] = React.useState<Record<string, number>>({});
-    const [totalPrinted, setTotalPrinted] = React.useState(0);
+    const [rawRows, setRawRows] = React.useState<{ dept: string; inputType: string; qty: number }[]>([]);
     const [chartLoading, setChartLoading] = React.useState(true);
+    const [selectedDepts, setSelectedDepts] = React.useState<string[] | null>(null);
+    const [selectedInputTypes, setSelectedInputTypes] = React.useState<string[] | null>(null);
+
+    const deptLabel = React.useCallback(
+        (id: string) => (id === UNASSIGNED_KEY ? 'Unassigned' : (deptMap[id] ?? id)),
+        [deptMap]
+    );
+    const inputTypeLabel = React.useCallback(
+        (id: string) => (id === UNASSIGNED_KEY ? 'Unassigned' : (inputTypeMap[id] ?? id)),
+        [inputTypeMap]
+    );
 
     // All-time stats (not date-filtered)
     const [statsLoading, setStatsLoading] = React.useState(true);
     const [totalAllTime, setTotalAllTime] = React.useState(0);
-    const [pendingCount, setPendingCount] = React.useState(0);
     const [topDeptId, setTopDeptId] = React.useState<string | null>(null);
+
+    const inputTypeFilterOptions = React.useMemo(
+        () => [
+            ...inputTypes.map((t) => ({ id: t.id, label: t.title })),
+            ...(rawRows.some((r) => r.inputType === UNASSIGNED_KEY) ? [{ id: UNASSIGNED_KEY, label: 'Unassigned' }] : []),
+        ],
+        [inputTypes, rawRows]
+    );
+    const allInputTypeIds = React.useMemo(() => inputTypeFilterOptions.map((o) => o.id), [inputTypeFilterOptions]);
+    const effectiveSelectedInputTypes = selectedInputTypes ?? allInputTypeIds;
+
+    const rawTotals = React.useMemo(() => {
+        const totals: Record<string, number> = {};
+        for (const row of rawRows) {
+            if (!effectiveSelectedInputTypes.includes(row.inputType)) continue;
+            totals[row.dept] = (totals[row.dept] ?? 0) + row.qty;
+        }
+        return totals;
+    }, [rawRows, effectiveSelectedInputTypes]);
+
+    const totalPrinted = React.useMemo(
+        () => Object.values(rawTotals).reduce((sum, v) => sum + v, 0),
+        [rawTotals]
+    );
 
     const chartData = React.useMemo<ChartRow[]>(() => {
         return Object.entries(rawTotals)
             .map(([dept, total]) => ({
                 dept,
-                label: dept === UNASSIGNED_KEY ? 'Unassigned' : (deptMap[dept] ?? dept),
+                label: deptLabel(dept),
                 total,
                 color: dept === UNASSIGNED_KEY ? '#9E9E9E' : colorForDeptId(dept),
             }))
             .sort((a, b) => b.total - a.total);
-    }, [rawTotals, deptMap]);
+    }, [rawTotals, deptLabel]);
+
+    const deptFilterOptions = React.useMemo(
+        () => [
+            ...departments.map((d) => ({ id: d.id, label: d.title })),
+            ...(rawRows.some((r) => r.dept === UNASSIGNED_KEY) ? [{ id: UNASSIGNED_KEY, label: 'Unassigned' }] : []),
+        ],
+        [departments, rawRows]
+    );
+    const allDeptIds = React.useMemo(() => deptFilterOptions.map((o) => o.id), [deptFilterOptions]);
+    const effectiveSelectedDepts = selectedDepts ?? allDeptIds;
+    const filteredChartData = React.useMemo(
+        () => chartData.filter((row) => effectiveSelectedDepts.includes(row.dept)),
+        [chartData, effectiveSelectedDepts]
+    );
+
+    const handleDeptFilterChange = (event: SelectChangeEvent<string[]>) => {
+        const { value } = event.target;
+        setSelectedDepts(typeof value === 'string' ? value.split(',') : value);
+    };
+
+    const handleInputTypeFilterChange = (event: SelectChangeEvent<string[]>) => {
+        const { value } = event.target;
+        setSelectedInputTypes(typeof value === 'string' ? value.split(',') : value);
+    };
 
     React.useEffect(() => {
         async function fetchDepartments() {
@@ -104,39 +167,49 @@ export default function DashboardPage() {
     }, []);
 
     React.useEffect(() => {
+        async function fetchInputTypes() {
+            const { data } = await supabase.from('input_type').select('id, title');
+            setInputTypes(data ?? []);
+        }
+        fetchInputTypes();
+    }, []);
+
+    React.useEffect(() => {
         async function fetchStats() {
             setStatsLoading(true);
 
             const { data, error } = await supabase
                 .from('ila_avery_note_items')
-                .select('print_qty, done, dept_id');
+                .select('print_qty, dept_id, input_id');
 
             if (error || !data) {
                 setStatsLoading(false);
                 return;
             }
 
+            const poInputIds = new Set(
+                inputTypes.filter((t) => t.title.trim().toUpperCase() === 'PO').map((t) => t.id)
+            );
+
             let total = 0;
-            let pending = 0;
             const deptTotals: Record<string, number> = {};
 
             for (const row of data) {
+                if (row.input_id && poInputIds.has(row.input_id)) continue;
                 total += row.print_qty ?? 0;
-                if (row.done === false) pending += 1;
-                const key = row.dept_id ?? UNASSIGNED_KEY;
-                deptTotals[key] = (deptTotals[key] ?? 0) + (row.print_qty ?? 0);
+                if (!row.dept_id) continue;
+                deptTotals[row.dept_id] = (deptTotals[row.dept_id] ?? 0) + (row.print_qty ?? 0);
             }
 
             const topKey = Object.entries(deptTotals).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
 
             setTotalAllTime(total);
-            setPendingCount(pending);
             setTopDeptId(topKey);
             setStatsLoading(false);
         }
 
         fetchStats();
-    }, []);
+    }, [inputTypes]);
 
     React.useEffect(() => {
         async function fetchChartData() {
@@ -146,25 +219,22 @@ export default function DashboardPage() {
 
             const { data, error } = await supabase
                 .from('ila_avery_note_items')
-                .select('dept_id, print_qty')
+                .select('dept_id, input_id, print_qty')
                 .gte('created_at', from.toISOString());
 
             if (error || !data) {
-                setRawTotals({});
+                setRawRows([]);
                 setChartLoading(false);
                 return;
             }
 
-            const totals: Record<string, number> = {};
-            let grandTotal = 0;
-            for (const row of data) {
-                const key = row.dept_id ?? UNASSIGNED_KEY;
-                totals[key] = (totals[key] ?? 0) + (row.print_qty ?? 0);
-                grandTotal += row.print_qty ?? 0;
-            }
-
-            setRawTotals(totals);
-            setTotalPrinted(grandTotal);
+            setRawRows(
+                data.map((row) => ({
+                    dept: row.dept_id ?? UNASSIGNED_KEY,
+                    inputType: row.input_id ?? UNASSIGNED_KEY,
+                    qty: row.print_qty ?? 0,
+                }))
+            );
             setChartLoading(false);
         }
 
@@ -193,11 +263,10 @@ export default function DashboardPage() {
                 {/* Stats cards */}
                 <Grid container spacing={3} sx={{ mb: 4 }}>
                     {[
-                        { label: 'Total Labels Requested', value: totalAllTime.toLocaleString(), icon: <LabelIcon fontSize="large" />, color: '#0097A7', loading: statsLoading },
-                        { label: 'Requests Still Pending', value: pendingCount.toLocaleString(), icon: <PendingActionsIcon fontSize="large" />, color: '#FBBC05', loading: statsLoading },
-                        { label: 'Most Active Department', value: topDeptId ? (deptMap[topDeptId] ?? topDeptId) : '—', icon: <GroupIcon fontSize="large" />, color: '#EA4335', loading: statsLoading },
+                        { label: 'Total Replenishments Requested (pc)', value: totalAllTime.toLocaleString(), icon: <LabelIcon fontSize="large" />, color: '#0097A7', loading: statsLoading },
+                        { label: 'Most Active Department', value: topDeptId ? deptLabel(topDeptId) : '—', icon: <GroupIcon fontSize="large" />, color: '#EA4335', loading: statsLoading },
                     ].map((stat) => (
-                        <Grid item xs={12} sm={6} lg={3} key={stat.label}>
+                        <Grid item xs={12} sm={6} lg={4} key={stat.label}>
                             <Card
                                 elevation={0}
                                 sx={{
@@ -250,21 +319,71 @@ export default function DashboardPage() {
                                     Total quantity requested, grouped by department
                                 </Typography>
                             </Box>
-                            <FormControl size="small" sx={{ minWidth: 160 }}>
-                                <InputLabel id="date-range-label">Time Period</InputLabel>
-                                <Select
-                                    labelId="date-range-label"
-                                    value={dateRange}
-                                    label="Time Period"
-                                    onChange={(e) => setDateRange(Number(e.target.value))}
-                                >
-                                    {DATE_RANGE_OPTIONS.map((opt) => (
-                                        <MenuItem key={opt.value} value={opt.value}>
-                                            {opt.label}
-                                        </MenuItem>
-                                    ))}
-                                </Select>
-                            </FormControl>
+                            <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+                                <FormControl size="small" sx={{ minWidth: 220 }}>
+                                    <InputLabel id="dept-filter-label">Departments</InputLabel>
+                                    <Select
+                                        labelId="dept-filter-label"
+                                        multiple
+                                        value={effectiveSelectedDepts}
+                                        label="Departments"
+                                        onChange={handleDeptFilterChange}
+                                        renderValue={(selected) =>
+                                            selected.length === allDeptIds.length
+                                                ? 'All Departments'
+                                                : selected
+                                                      .map((id) => deptFilterOptions.find((o) => o.id === id)?.label ?? id)
+                                                      .join(', ')
+                                        }
+                                    >
+                                        {deptFilterOptions.map((opt) => (
+                                            <MenuItem key={opt.id} value={opt.id}>
+                                                <Checkbox checked={effectiveSelectedDepts.includes(opt.id)} size="small" />
+                                                <ListItemText primary={opt.label} />
+                                            </MenuItem>
+                                        ))}
+                                    </Select>
+                                </FormControl>
+                                <FormControl size="small" sx={{ minWidth: 220 }}>
+                                    <InputLabel id="input-type-filter-label">Input Types</InputLabel>
+                                    <Select
+                                        labelId="input-type-filter-label"
+                                        multiple
+                                        value={effectiveSelectedInputTypes}
+                                        label="Input Types"
+                                        onChange={handleInputTypeFilterChange}
+                                        renderValue={(selected) =>
+                                            selected.length === allInputTypeIds.length
+                                                ? 'All Input Types'
+                                                : selected
+                                                      .map((id) => inputTypeFilterOptions.find((o) => o.id === id)?.label ?? id)
+                                                      .join(', ')
+                                        }
+                                    >
+                                        {inputTypeFilterOptions.map((opt) => (
+                                            <MenuItem key={opt.id} value={opt.id}>
+                                                <Checkbox checked={effectiveSelectedInputTypes.includes(opt.id)} size="small" />
+                                                <ListItemText primary={opt.label} />
+                                            </MenuItem>
+                                        ))}
+                                    </Select>
+                                </FormControl>
+                                <FormControl size="small" sx={{ minWidth: 160 }}>
+                                    <InputLabel id="date-range-label">Time Period</InputLabel>
+                                    <Select
+                                        labelId="date-range-label"
+                                        value={dateRange}
+                                        label="Time Period"
+                                        onChange={(e) => setDateRange(Number(e.target.value))}
+                                    >
+                                        {DATE_RANGE_OPTIONS.map((opt) => (
+                                            <MenuItem key={opt.value} value={opt.value}>
+                                                {opt.label}
+                                            </MenuItem>
+                                        ))}
+                                    </Select>
+                                </FormControl>
+                            </Box>
                         </Box>
                         <Divider sx={{ mb: 3 }} />
 
@@ -272,13 +391,17 @@ export default function DashboardPage() {
                             <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: 280 }}>
                                 <CircularProgress />
                             </Box>
-                        ) : chartData.length === 0 ? (
+                        ) : filteredChartData.length === 0 ? (
                             <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: 280 }}>
-                                <Typography color="text.secondary">No data available for this period.</Typography>
+                                <Typography color="text.secondary">
+                                    {chartData.length === 0
+                                        ? 'No data available for this period.'
+                                        : 'No departments selected. Choose at least one department to display.'}
+                                </Typography>
                             </Box>
                         ) : (
                             <ResponsiveContainer width="100%" height={280}>
-                                <BarChart data={chartData} margin={{ top: 8, right: 16, left: 0, bottom: 8 }}>
+                                <BarChart data={filteredChartData} margin={{ top: 8, right: 16, left: 0, bottom: 8 }}>
                                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E0E0E0" />
                                     <XAxis dataKey="label" tick={{ fontSize: 13 }} axisLine={false} tickLine={false} />
                                     <YAxis tick={{ fontSize: 12 }} axisLine={false} tickLine={false} width={50} tickFormatter={(v) => v.toLocaleString()} />
@@ -287,7 +410,7 @@ export default function DashboardPage() {
                                         cursor={{ fill: 'rgba(0,0,0,0.04)' }}
                                     />
                                     <Bar dataKey="total" radius={[6, 6, 0, 0]} maxBarSize={80}>
-                                        {chartData.map((entry) => (
+                                        {filteredChartData.map((entry) => (
                                             <Cell key={entry.dept} fill={entry.color} />
                                         ))}
                                     </Bar>
@@ -295,9 +418,9 @@ export default function DashboardPage() {
                             </ResponsiveContainer>
                         )}
 
-                        {!chartLoading && chartData.length > 0 && (
+                        {!chartLoading && filteredChartData.length > 0 && (
                             <Box sx={{ display: 'flex', gap: 2, mt: 2, flexWrap: 'wrap' }}>
-                                {chartData.map((row) => (
+                                {filteredChartData.map((row) => (
                                     <Box key={row.dept} sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
                                         <Box sx={{ width: 12, height: 12, borderRadius: 1, bgcolor: row.color, flexShrink: 0 }} />
                                         <Typography variant="body2" color="text.secondary">
