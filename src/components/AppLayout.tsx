@@ -33,7 +33,7 @@ const DRAWER_WIDTH_COLLAPSED = 64;
 
 const navItems = [
     { label: 'Overview', icon: <DashboardIcon />, href: '/dashboard' },
-    { label: 'ILA Avery Notes', icon: <NoteAltIcon />, href: '/avery-notes' },
+    { label: 'ILA Input History', icon: <NoteAltIcon />, href: '/ila-input-history' },
     { label: 'Departments', icon: <GroupIcon />, href: '/departments' },
     { label: 'Input Types', icon: <SettingsIcon />, href: '/input-types' },
 ];
