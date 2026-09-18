@@ -90,17 +90,17 @@ const MUIThemeForHTTable = registerTheme('custom-theme', {
     foregroundColor: '#ffffffde',
     foregroundSecondaryColor: '#ffffff99',
     borderColor: '#ffffff1f',
-    accentColor: '#90caf9ff',
+    accentColor: '#006978ff',
     shadowColor: '#00000080',
     headerBackgroundColor: '#121212ff',
     headerForegroundColor: '#ffffffde',
     headerFontWeight: '500',
     headerHighlightedBackgroundColor: '#2c2c2cff',
-    headerHighlightedForegroundColor: '#90caf9ff',
+    headerHighlightedForegroundColor: 'hsl(188, 100%, 40%)',
     cellHorizontalBorderColor: '#ffffff1f',
     cellVerticalBorderColor: '#ffffff1f',
-    cellSelectionBorderColor: '#90caf9ff',
-    cellSelectionBackgroundColor: '#90caf926',
+    cellSelectionBorderColor: '#006978ff',
+    cellSelectionBackgroundColor: '#00687867',
   }
 });
 
@@ -122,6 +122,63 @@ const COLUMNS: { key: ColumnKey; label: string }[] = [
 ];
 
 const COLUMN_VISIBILITY_STORAGE_KEY = 'avery-notes-column-visibility';
+const FILTERS_STORAGE_KEY = 'avery-notes-filters';
+
+function getTodayDateString(): string {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+}
+
+type PersistedFilters = {
+    search: string;
+    dateFrom: string;
+    dateTo: string;
+    deptFilter: string;
+    inputFilter: string;
+    doneFilter: string;
+    multiPoList: string[];
+};
+
+// First-ever load (nothing saved yet) defaults the date range to today,
+// so the page only pulls today's rows instead of the whole table.
+function getDefaultFilters(): PersistedFilters {
+    const today = getTodayDateString();
+    return {
+        search: '',
+        dateFrom: today,
+        dateTo: today,
+        deptFilter: '',
+        inputFilter: '',
+        doneFilter: 'all',
+        multiPoList: [],
+    };
+}
+
+function loadPersistedFilters(): PersistedFilters {
+    const defaults = getDefaultFilters();
+    if (typeof window === 'undefined') return defaults;
+    try {
+        const stored = window.localStorage.getItem(FILTERS_STORAGE_KEY);
+        if (!stored) return defaults;
+        const parsed = JSON.parse(stored) as Partial<PersistedFilters>;
+        return {
+            search: typeof parsed.search === 'string' ? parsed.search : defaults.search,
+            dateFrom: typeof parsed.dateFrom === 'string' && parsed.dateFrom ? parsed.dateFrom : defaults.dateFrom,
+            dateTo: typeof parsed.dateTo === 'string' && parsed.dateTo ? parsed.dateTo : defaults.dateTo,
+            deptFilter: typeof parsed.deptFilter === 'string' ? parsed.deptFilter : defaults.deptFilter,
+            inputFilter: typeof parsed.inputFilter === 'string' ? parsed.inputFilter : defaults.inputFilter,
+            doneFilter: typeof parsed.doneFilter === 'string' ? parsed.doneFilter : defaults.doneFilter,
+            multiPoList: Array.isArray(parsed.multiPoList)
+                ? parsed.multiPoList.filter((p): p is string => typeof p === 'string')
+                : defaults.multiPoList,
+        };
+    } catch {
+        return defaults;
+    }
+}
 
 // Same hash-based palette idea as the old MUI Chip coloring, but as raw
 // hex values since Handsontable cells are plain DOM, not MUI components.
@@ -181,16 +238,19 @@ export default function AveryNotesPage() {
     const [fetching, setFetching] = React.useState(true);
     const [fetchError, setFetchError] = React.useState<string | null>(null);
 
-    const [search, setSearch] = React.useState('');
-    const [dateFrom, setDateFrom] = React.useState('');
-    const [dateTo, setDateTo] = React.useState('');
+    // Lazy-initialized once from localStorage so we don't read/parse it on
+    // every render; falls back to today-only defaults on first-ever visit.
+    const [initialFilters] = React.useState<PersistedFilters>(() => loadPersistedFilters());
+    const [search, setSearch] = React.useState(initialFilters.search);
+    const [dateFrom, setDateFrom] = React.useState(initialFilters.dateFrom);
+    const [dateTo, setDateTo] = React.useState(initialFilters.dateTo);
     const [multiPoOpen, setMultiPoOpen] = React.useState(false);
-    const [multiPoText, setMultiPoText] = React.useState('');
-    const [multiPoList, setMultiPoList] = React.useState<string[]>([]);
+    const [multiPoList, setMultiPoList] = React.useState<string[]>(initialFilters.multiPoList);
+    const [multiPoText, setMultiPoText] = React.useState(initialFilters.multiPoList.join('\n'));
     const [multiPoNotFound, setMultiPoNotFound] = React.useState<string[]>([]);
-    const [deptFilter, setDeptFilter] = React.useState<string>('');
-    const [inputFilter, setInputFilter] = React.useState<string>('');
-    const [doneFilter, setDoneFilter] = React.useState<string>('all');
+    const [deptFilter, setDeptFilter] = React.useState<string>(initialFilters.deptFilter);
+    const [inputFilter, setInputFilter] = React.useState<string>(initialFilters.inputFilter);
+    const [doneFilter, setDoneFilter] = React.useState<string>(initialFilters.doneFilter);
     const [columnsMenuAnchor, setColumnsMenuAnchor] = React.useState<null | HTMLElement>(null);
     const [hiddenColumns, setHiddenColumns] = React.useState<Set<string>>(new Set());
 
@@ -206,6 +266,25 @@ export default function AveryNotesPage() {
             // ignore malformed/unavailable storage
         }
     }, []);
+
+    // Save filter selections to localStorage whenever any of them change,
+    // so they're restored automatically next time the page is opened.
+    React.useEffect(() => {
+        try {
+            const toStore: PersistedFilters = {
+                search,
+                dateFrom,
+                dateTo,
+                deptFilter,
+                inputFilter,
+                doneFilter,
+                multiPoList,
+            };
+            window.localStorage.setItem(FILTERS_STORAGE_KEY, JSON.stringify(toStore));
+        } catch {
+            // ignore unavailable storage
+        }
+    }, [search, dateFrom, dateTo, deptFilter, inputFilter, doneFilter, multiPoList]);
 
     const isColumnVisible = React.useCallback(
         (key: ColumnKey) => !hiddenColumns.has(key),
@@ -243,11 +322,24 @@ export default function AveryNotesPage() {
         async function fetchData() {
             setFetching(true);
             setFetchError(null);
+
+            let itemsQuery = supabase
+                .from('ila_avery_note_items')
+                .select('id, seq, po_no, remark, print_qty, created_at, done, input_id, dept_id, returned, short_group_code, label_id')
+                .order('seq', { ascending: true });
+
+            // Pull only the rows within the selected date range from the
+            // server, instead of loading the whole table and filtering
+            // client-side. With no saved filters yet this is today only.
+            if (dateFrom) {
+                itemsQuery = itemsQuery.gte('created_at', new Date(`${dateFrom}T00:00:00`).toISOString());
+            }
+            if (dateTo) {
+                itemsQuery = itemsQuery.lte('created_at', new Date(`${dateTo}T23:59:59.999`).toISOString());
+            }
+
             const [itemsRes, deptRes, inputRes] = await Promise.all([
-                supabase
-                    .from('ila_avery_note_items')
-                    .select('id, seq, po_no, remark, print_qty, created_at, done, input_id, dept_id, returned, short_group_code, label_id')
-                    .order('seq', { ascending: true }),
+                itemsQuery,
                 supabase.from('departments').select('id, title').order('title', { ascending: true }),
                 supabase.from('input_type').select('id, title').order('title', { ascending: true }),
             ]);
@@ -261,7 +353,7 @@ export default function AveryNotesPage() {
             setFetching(false);
         }
         fetchData();
-    }, [user]);
+    }, [user, dateFrom, dateTo]);
 
     const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         setSearch(e.target.value);
@@ -269,8 +361,8 @@ export default function AveryNotesPage() {
 
     const filteredRows = React.useMemo(() => {
         const q = search.toLowerCase();
-        const from = dateFrom ? new Date(dateFrom).setHours(0, 0, 0, 0) : null;
-        const to = dateTo ? new Date(dateTo).setHours(23, 59, 59, 999) : null;
+        // Date range is now applied server-side (see the fetch effect
+        // above), so `rows` already only contains the selected range.
         return rows.filter((r) => {
             if (q) {
                 const matchText =
@@ -279,12 +371,6 @@ export default function AveryNotesPage() {
                     String(r.seq ?? '').includes(q) ||
                     String(r.print_qty ?? '').includes(q);
                 if (!matchText) return false;
-            }
-            if (from !== null || to !== null) {
-                const ts = r.created_at ? new Date(r.created_at).getTime() : null;
-                if (ts === null) return false;
-                if (from !== null && ts < from) return false;
-                if (to !== null && ts > to) return false;
             }
             if (multiPoList.length > 0) {
                 const poNorm = (r.po_no ?? '').toLowerCase();
@@ -300,7 +386,35 @@ export default function AveryNotesPage() {
             if (doneFilter === 'pending' && r.done) return false;
             return true;
         });
-    }, [rows, search, dateFrom, dateTo, multiPoList, deptFilter, inputFilter, doneFilter]);
+    }, [rows, search, multiPoList, deptFilter, inputFilter, doneFilter]);
+
+    // Whether any filter differs from the today-only default, used to pick
+    // the right empty-state message and to enable/disable Clear Filters.
+    const hasActiveFilters = React.useMemo(() => {
+        const today = getTodayDateString();
+        return Boolean(
+            search ||
+            multiPoList.length > 0 ||
+            deptFilter ||
+            inputFilter ||
+            doneFilter !== 'all' ||
+            dateFrom !== today ||
+            dateTo !== today
+        );
+    }, [search, multiPoList, deptFilter, inputFilter, doneFilter, dateFrom, dateTo]);
+
+    const handleClearFilters = React.useCallback(() => {
+        const defaults = getDefaultFilters();
+        setSearch(defaults.search);
+        setDateFrom(defaults.dateFrom);
+        setDateTo(defaults.dateTo);
+        setDeptFilter(defaults.deptFilter);
+        setInputFilter(defaults.inputFilter);
+        setDoneFilter(defaults.doneFilter);
+        setMultiPoList(defaults.multiPoList);
+        setMultiPoText('');
+        setMultiPoNotFound([]);
+    }, []);
 
     const handleExportExcel = () => {
         const visibleColumns = COLUMNS.filter((c) => isColumnVisible(c.key));
@@ -600,6 +714,17 @@ export default function AveryNotesPage() {
                             <Button
                                 size="small"
                                 variant="outlined"
+                                color="inherit"
+                                startIcon={<ClearIcon fontSize="small" />}
+                                onClick={handleClearFilters}
+                                disabled={!hasActiveFilters}
+                                sx={{ whiteSpace: 'nowrap' }}
+                            >
+                                Clear Filters
+                            </Button>
+                            <Button
+                                size="small"
+                                variant="outlined"
                                 startIcon={<ViewColumnIcon fontSize="small" />}
                                 onClick={(e) => setColumnsMenuAnchor(e.currentTarget)}
                                 sx={{ whiteSpace: 'nowrap', ml: 'auto' }}
@@ -654,7 +779,7 @@ export default function AveryNotesPage() {
                             )}
                             {!fetching && filteredRows.length === 0 ? (
                                 <Typography variant="body2" color="text.secondary" sx={{ py: 6, textAlign: 'center' }}>
-                                    {search || dateFrom || dateTo ? 'No records match your filters.' : 'No records found.'}
+                                    {hasActiveFilters ? 'No records match your filters.' : 'No records found for today.'}
                                 </Typography>
                             ) : (
                                 <HotTable
