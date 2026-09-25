@@ -180,22 +180,17 @@ export default function DashboardPage() {
 
             const { data, error } = await supabase
                 .from('ila_avery_note_items')
-                .select('print_qty, dept_id, input_id');
+                .select('print_qty, dept_id');
 
             if (error || !data) {
                 setStatsLoading(false);
                 return;
             }
 
-            const poInputIds = new Set(
-                inputTypes.filter((t) => t.title.trim().toUpperCase() === 'PO').map((t) => t.id)
-            );
-
             let total = 0;
             const deptTotals: Record<string, number> = {};
 
             for (const row of data) {
-                if (row.input_id && poInputIds.has(row.input_id)) continue;
                 total += row.print_qty ?? 0;
                 if (!row.dept_id) continue;
                 deptTotals[row.dept_id] = (deptTotals[row.dept_id] ?? 0) + (row.print_qty ?? 0);
@@ -209,7 +204,7 @@ export default function DashboardPage() {
         }
 
         fetchStats();
-    }, [inputTypes]);
+    }, []);
 
     React.useEffect(() => {
         async function fetchChartData() {

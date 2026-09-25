@@ -5,28 +5,30 @@ import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Container from '@mui/material/Container';
+import Grid from '@mui/material/Grid';
+import Paper from '@mui/material/Paper';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 import LabelIcon from '@mui/icons-material/Label';
+import LocalShippingIcon from '@mui/icons-material/LocalShipping';
+import ImageIcon from '@mui/icons-material/Image';
 import { supabase } from '../lib/supabaseClient';
 import { useAuth } from '../context/AuthContext';
 
+// Dummy menu items - swap hrefs for real routes once those pages exist
+const MENU_ITEMS = [
+    { label: 'PO Movement', href: '/po-movement', icon: LocalShippingIcon },
+    { label: 'Visual Maker', href: '/visual-maker', icon: ImageIcon }
+];
+
 // Google "G" logo SVG
 const GoogleIcon = () => (
-    <Box
-        component="svg"
-        xmlns="http://www.w3.org/2000/svg"
-        viewBox="0 0 48 48"
-        sx={{ width: 20, height: 20, mr: 1.5 }}
-    >
+    <Box component="svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" sx={{ width: 20, height: 20, mr: 1.5 }}>
         <path
             fill="#EA4335"
             d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"
         />
-        <path
-            fill="#4285F4"
-            d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"
-        />
+        <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z" />
         <path
             fill="#FBBC05"
             d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"
@@ -45,11 +47,11 @@ export default function HomePage() {
     const [error, setError] = React.useState(null);
 
     // Redirect to dashboard if already authenticated
-    React.useEffect(() => {
-        if (!loading && user) {
-            router.replace('/dashboard');
-        }
-    }, [user, loading, router]);
+    // React.useEffect(() => {
+    //     if (!loading && user) {
+    //         router.replace('/dashboard');
+    //     }
+    // }, [user, loading, router]);
 
     const handleGoogleSignIn = async () => {
         setError(null);
@@ -86,21 +88,10 @@ export default function HomePage() {
             >
                 <Container maxWidth="md">
                     <Box sx={{ textAlign: 'center' }}>
-                        <Stack
-                            direction="row"
-                            spacing={2}
-                            alignItems="center"
-                            justifyContent="center"
-                            sx={{ mb: 5 }}
-                        >
+                        <Stack direction="row" spacing={2} alignItems="center" justifyContent="center" sx={{ mb: 5 }}>
                             <LabelIcon sx={{ fontSize: { xs: 40, md: 56 }, color: '#fff' }} />
-                            <Typography
-                                component="h1"
-                                variant="h2"
-                                fontWeight={700}
-                                sx={{ color: '#fff' }}
-                            >
-                                Label Manager
+                            <Typography component="h1" variant="h2" fontWeight={700} sx={{ color: '#fff' }}>
+                                Label Management
                             </Typography>
                         </Stack>
 
@@ -110,24 +101,67 @@ export default function HomePage() {
                             </Alert>
                         )}
 
-                        <Button
-                            variant="contained"
-                            size="large"
-                            onClick={handleGoogleSignIn}
-                            disabled={signingIn}
-                            startIcon={<GoogleIcon />}
-                            sx={{
-                                bgcolor: '#fff',
-                                color: '#000',
-                                fontWeight: 600,
-                                px: 4,
-                                py: 1.5,
-                                textTransform: 'none',
-                                '&:hover': { bgcolor: 'rgba(255,255,255,0.9)' }
-                            }}
-                        >
-                            {signingIn ? 'Redirecting...' : 'Sign in with Google'}
-                        </Button>
+                        {!loading && user ? (
+                            <Button variant="outlined" size="large" onClick={() => router.push('/dashboard')} sx={{ mt: 2 }}>
+                                Go To Dashboard
+                            </Button>
+                        ) : (
+                            <Button
+                                variant="contained"
+                                size="large"
+                                onClick={handleGoogleSignIn}
+                                disabled={signingIn}
+                                startIcon={<GoogleIcon />}
+                                sx={{
+                                    bgcolor: '#fff',
+                                    color: '#000',
+                                    fontWeight: 600,
+                                    px: 4,
+                                    py: 1.5,
+                                    textTransform: 'none',
+                                    '&:hover': { bgcolor: 'rgba(255,255,255,0.9)' }
+                                }}
+                            >
+                                {'Sign in with Google'}
+                            </Button>
+                        )}
+
+                        {/* Dummy grid of menus */}
+                        <Grid container spacing={2} justifyContent="center" sx={{ mt: 6 }}>
+                            {MENU_ITEMS.map(({ label, href, icon: Icon }) => (
+                                <Grid item xs={6} sm={4} key={label}>
+                                    <Paper
+                                        component="button"
+                                        onClick={() => router.push(href)}
+                                        elevation={0}
+                                        sx={{
+                                            width: '100%',
+                                            border: '1px solid rgba(255,255,255,0.15)',
+                                            bgcolor: 'rgba(255,255,255,0.04)',
+                                            color: '#fff',
+                                            borderRadius: 2,
+                                            px: 3,
+                                            py: 4,
+                                            cursor: 'pointer',
+                                            display: 'flex',
+                                            flexDirection: 'column',
+                                            alignItems: 'center',
+                                            gap: 1.5,
+                                            transition: 'background-color 0.15s ease, transform 0.15s ease',
+                                            '&:hover': {
+                                                bgcolor: 'rgba(255,255,255,0.09)',
+                                                transform: 'translateY(-2px)'
+                                            }
+                                        }}
+                                    >
+                                        <Icon sx={{ fontSize: 32 }} />
+                                        <Typography variant="subtitle1" fontWeight={600}>
+                                            {label}
+                                        </Typography>
+                                    </Paper>
+                                </Grid>
+                            ))}
+                        </Grid>
                     </Box>
                 </Container>
             </Box>

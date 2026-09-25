@@ -27,6 +27,7 @@ import Brightness7Icon from '@mui/icons-material/Brightness7';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import { useAuth } from '../context/AuthContext';
 import { useColorMode } from '../context/ColorModeContext';
+import { Button } from '@mui/material';
 
 const DRAWER_WIDTH = 240;
 const DRAWER_WIDTH_COLLAPSED = 64;
@@ -85,11 +86,14 @@ export default function AppLayout({ children }: AppLayoutProps) {
                     minHeight: { xs: 56, sm: 64 }
                 }}
             >
-                <LabelIcon sx={{ color: 'primary.main', flexShrink: 0 }} />
                 {!collapsed && (
-                    <Typography variant="h6" fontWeight={700} color="primary.main" sx={{ ml: 1 }} noWrap>
-                        LabelManager
-                    </Typography>
+                    <Button variant="text"
+                        onClick={() => router.push('/')}
+                        sx={{ textTransform: 'none', gap: 1, px: 0, color: 'primary.main', fontWeight: 600, fontSize: 18, textWrap: 'nowrap' }}
+                    >
+                        <LabelIcon sx={{ color: 'primary.main', flexShrink: 0 }} />
+                        Label Management
+                    </Button>
                 )}
             </Toolbar>
             <Divider />
