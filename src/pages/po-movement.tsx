@@ -24,6 +24,7 @@ import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';
 import Toolbar from '@mui/material/Toolbar';
 import Typography from '@mui/material/Typography';
+import { alpha, useTheme } from '@mui/material/styles';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import QrCodeScannerIcon from '@mui/icons-material/QrCodeScanner';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
@@ -67,27 +68,28 @@ function nextId() {
     return `po-${Date.now()}-${idCounter}`;
 }
 
-const paperSx = {
-    p: 2.5,
-    bgcolor: 'rgba(255,255,255,0.04)',
-    border: '1px solid rgba(255,255,255,0.12)',
-    borderRadius: 2
-};
-
-const darkFieldSx = {
-    '& .MuiOutlinedInput-root': {
-        color: '#fff',
-        '& fieldset': { borderColor: 'rgba(255,255,255,0.25)' },
-        '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.4)' },
-        '&.Mui-focused fieldset': { borderColor: '#fff' }
-    },
-    '& .MuiFormHelperText-root': { color: 'rgba(255,255,255,0.5)' },
-    '& .MuiInputAdornment-root': { color: 'rgba(255,255,255,0.6)' }
-};
-
 export default function PoMovementPage() {
     const router = useRouter();
     const { user } = useAuth();
+    const theme = useTheme();
+
+    /* ---------------------------------------------------------------------
+       Theme-aware style helpers.
+       Previously these were hardcoded to a dark palette (#121212 / #fff /
+       fixed rgba overlays), so the page ignored the app's light/dark theme
+       and text could render unreadable (e.g. black-on-black) in light mode.
+       Everything below derives from theme.palette so it follows whichever
+       mode is active.
+       --------------------------------------------------------------------- */
+    const surfaceOverlay = theme.palette.mode === 'dark' ? alpha('#fff', 0.04) : alpha('#000', 0.03);
+    const surfaceOverlayHover = theme.palette.mode === 'dark' ? alpha('#fff', 0.08) : alpha('#000', 0.06);
+
+    const paperSx = {
+        p: 2.5,
+        bgcolor: surfaceOverlay,
+        border: `1px solid ${theme.palette.divider}`,
+        borderRadius: 2
+    };
 
     // ---- operator ----
     // Lazily read any previously saved name on this device so there's no
@@ -355,10 +357,10 @@ export default function PoMovementPage() {
                 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
             </Head>
 
-            <Box sx={{ background: '#121212', color: '#fff', minHeight: '100vh' }}>
-                <AppBar position="static" color="transparent" elevation={0} sx={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+            <Box sx={{ bgcolor: 'background.default', color: 'text.primary', minHeight: '100vh' }}>
+                <AppBar position="static" color="transparent" elevation={0} sx={{ borderBottom: `1px solid ${theme.palette.divider}` }}>
                     <Toolbar sx={{ gap: 1 }}>
-                        <IconButton edge="start" color="inherit" onClick={() => router.push('/dashboard')}>
+                        <IconButton edge="start" color="inherit" onClick={() => router.push('/')}>
                             <ArrowBackIcon />
                         </IconButton>
                         <Typography variant="h6" fontWeight={700} sx={{ flexGrow: 1 }}>
@@ -372,7 +374,7 @@ export default function PoMovementPage() {
                                 setNameDraft(operatorName || '');
                                 setEditingName(true);
                             }}
-                            sx={{ color: '#fff', borderColor: 'rgba(255,255,255,0.3)' }}
+                            sx={{ color: 'text.primary', borderColor: theme.palette.divider }}
                         />
                     </Toolbar>
                 </AppBar>
@@ -393,8 +395,8 @@ export default function PoMovementPage() {
                                 </Button>
                             </Stack>
 
-                            <Divider sx={{ my: 2, borderColor: 'rgba(255,255,255,0.12)' }}>
-                                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)' }}>
+                            <Divider sx={{ my: 2, borderColor: theme.palette.divider }}>
+                                <Typography variant="caption" color="text.secondary">
                                     OR ENTER MANUALLY
                                 </Typography>
                             </Divider>
@@ -411,7 +413,6 @@ export default function PoMovementPage() {
                                 InputProps={{ startAdornment: <InputAdornment position="start">IB</InputAdornment> }}
                                 error={!!manualError}
                                 helperText={manualError || `${manualValue.length}/${PO_LENGTH} digits`}
-                                sx={darkFieldSx}
                             />
                         </Paper>
 
@@ -428,19 +429,19 @@ export default function PoMovementPage() {
                             </Stack>
 
                             {items.length === 0 ? (
-                                <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.5)' }}>
+                                <Typography variant="body2" color="text.secondary">
                                     No POs added yet — scan or type an 8-digit PO number above.
                                 </Typography>
                             ) : (
                                 <List disablePadding>
                                     {items.map((item, idx) => (
                                         <React.Fragment key={item.id}>
-                                            {idx > 0 && <Divider component="li" sx={{ borderColor: 'rgba(255,255,255,0.08)' }} />}
+                                            {idx > 0 && <Divider component="li" sx={{ borderColor: theme.palette.divider }} />}
                                             <ListItem
                                                 disableGutters
                                                 secondaryAction={
                                                     <IconButton edge="end" disabled={submitting} onClick={() => removeItem(item.id)}>
-                                                        <DeleteOutlineIcon sx={{ color: 'rgba(255,255,255,0.6)' }} />
+                                                        <DeleteOutlineIcon color="action" />
                                                     </IconButton>
                                                 }
                                             >
@@ -448,7 +449,7 @@ export default function PoMovementPage() {
                                                     primary={formatPo(item)}
                                                     secondary={item.status === 'error' ? 'Failed to save — try again' : item.method}
                                                     secondaryTypographyProps={{
-                                                        sx: { color: item.status === 'error' ? '#f28b82' : 'rgba(255,255,255,0.5)' }
+                                                        sx: { color: item.status === 'error' ? 'error.main' : 'text.secondary' }
                                                     }}
                                                 />
                                             </ListItem>

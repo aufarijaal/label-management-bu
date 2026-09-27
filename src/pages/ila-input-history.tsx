@@ -22,8 +22,10 @@ import MenuItem from '@mui/material/MenuItem';
 import Select from '@mui/material/Select';
 import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
+import ArrowDropDownIcon from '@mui/icons-material/ArrowDropDown';
 import ClearIcon from '@mui/icons-material/Clear';
-import FileDownloadIcon from '@mui/icons-material/FileDownload';
+// NOTE: ExcelIcon isn't a stock MUI icon — point this at wherever your
+// project already defines it (e.g. a custom SvgIcon component).
 import ListAltIcon from '@mui/icons-material/ListAlt';
 import NoteAltIcon from '@mui/icons-material/NoteAlt';
 import SearchIcon from '@mui/icons-material/Search';
@@ -229,6 +231,89 @@ function formatDateTime(value: string | null): string {
     }
 }
 
+// Maps each recognized input_id to the exact column label used in the
+// "report format" export template (example_format_for_export_file.xlsx).
+// Input types with no matching column (e.g. FGT, Special Request, Other,
+// PO) simply have nowhere to place a quantity in that template.
+const REPORT_INPUT_COLUMNS: { id: string; label: string }[] = [
+    { id: 'prod_dmg', label: 'Production damage' },
+    { id: 'print_dmg', label: 'Damage in printing operation' },
+    { id: 'b', label: 'B-Grade' },
+    { id: 'c', label: 'C-Grade' },
+    { id: 'lost', label: 'Lost Label' },
+    { id: 'error', label: 'Data loss/Network error' },
+    { id: 'other', label: 'Other' },
+];
+
+function toDateOnly(value: string | null): Date | null {
+    if (!value) return null;
+    try {
+        const d = new Date(value);
+        if (Number.isNaN(d.getTime())) return null;
+        return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    } catch {
+        return null;
+    }
+}
+
+function ExcelIcon() {
+    return (
+        <svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 512 512">
+	<radialGradient id="SVGbwT1gbHR" cx={-736.418} cy={787.398} r={14.222} gradientTransform="rotate(46.451 44031.733 -21862.033)scale(-41.1236 31.9082)" gradientUnits="userSpaceOnUse">
+		<stop offset={0.065} stopColor="#379539"></stop>
+		<stop offset={0.422} stopColor="#297c2d"></stop>
+		<stop offset={0.703} stopColor="#15561c"></stop>
+	</radialGradient>
+	<path fill="url(#SVGbwT1gbHR)" d="M78.2 163.6c0-35.3 28.7-64 64-64h362.7v369.8c0 23.6-19.1 42.7-42.7 42.7H163.6c-47.1 0-85.3-38.2-85.3-85.3V163.6z"></path>
+	<radialGradient id="SVGGTMnrceI" cx={-762.747} cy={777.165} r={14.222} gradientTransform="rotate(44.03 18539.879 -10324.23)scale(-16.661 12.8906)" gradientUnits="userSpaceOnUse">
+		<stop offset={0} stopColor="#073b10"></stop>
+		<stop offset={0.992} stopColor="#084a13" stopOpacity={0}></stop>
+	</radialGradient>
+	<path fill="url(#SVGGTMnrceI)" fillOpacity={0.7} d="M78.2 163.6c0-35.3 28.7-64 64-64h362.7v369.8c0 23.6-19.1 42.7-42.7 42.7H163.6c-47.1 0-85.3-38.2-85.3-85.3V163.6z"></path>
+	<linearGradient id="SVGXhLNYdaT" x1={78.222} x2={274.273} y1={215.335} y2={215.335} gradientTransform="matrix(1 0 0 -1 0 514)" gradientUnits="userSpaceOnUse">
+		<stop offset={0} stopColor="#52d17c"></stop>
+		<stop offset={0.329} stopColor="#4aa647"></stop>
+	</linearGradient>
+	<path fill="url(#SVGXhLNYdaT)" d="M78.2 234.7c0-35.3 28.7-64 64-64h192c-23.6 0-42.7 19.1-42.7 42.7v85.3c0 23.6-19.1 42.7-42.7 42.7h-85.3c-47.1 0-85.3 38.2-85.3 85.3z"></path>
+	<linearGradient id="SVGaHx2YdtF" x1={206.222} x2={206.222} y1={343.335} y2={165.517} gradientTransform="matrix(1 0 0 -1 0 514)" gradientUnits="userSpaceOnUse">
+		<stop offset={0} stopColor="#29852f"></stop>
+		<stop offset={0.5} stopColor="#4aa647" stopOpacity={0}></stop>
+	</linearGradient>
+	<path fill="url(#SVGaHx2YdtF)" fillOpacity={0.3} d="M78.2 234.7c0-35.3 28.7-64 64-64h192c-23.6 0-42.7 19.1-42.7 42.7v85.3c0 23.6-19.1 42.7-42.7 42.7h-85.3c-47.1 0-85.3 38.2-85.3 85.3z"></path>
+	<linearGradient id="SVG0ARuJmyD" x1={89.567} x2={326.102} y1={304.297} y2={509.448} gradientTransform="matrix(1 0 0 -1 0 514)" gradientUnits="userSpaceOnUse">
+		<stop offset={0} stopColor="#66d052"></stop>
+		<stop offset={1} stopColor="#85e972"></stop>
+	</linearGradient>
+	<path fill="url(#SVG0ARuJmyD)" d="M78.2 85.3C78.2 38.2 116.4 0 163.6 0h170.7v170.7H163.6c-47.1 0-85.3 38.2-85.3 85.3V85.3z"></path>
+	<radialGradient id="SVGkGBPOeNV" cx={-814.063} cy={816.814} r={14.222} gradientTransform="matrix(-9.0188 0 0 19.094 -7016.886 -15487.255)" gradientUnits="userSpaceOnUse">
+		<stop offset={0.292} stopColor="#4eb43b"></stop>
+		<stop offset={1} stopColor="#72cc61" stopOpacity={0}></stop>
+	</radialGradient>
+	<path fill="url(#SVGkGBPOeNV)" d="M78.2 85.3C78.2 38.2 116.4 0 163.6 0h170.7v170.7H163.6c-47.1 0-85.3 38.2-85.3 85.3V85.3z"></path>
+	<linearGradient id="SVGVUAjgb5K" x1={193.631} x2={78.222} y1={386} y2={386} gradientTransform="matrix(1 0 0 -1 0 514)" gradientUnits="userSpaceOnUse">
+		<stop offset={0.184} stopColor="#c0e075" stopOpacity={0}></stop>
+		<stop offset={1} stopColor="#d1eb95"></stop>
+	</linearGradient>
+	<path fill="url(#SVGVUAjgb5K)" d="M78.2 85.3C78.2 38.2 116.4 0 163.6 0h170.7v170.7H163.6c-47.1 0-85.3 38.2-85.3 85.3V85.3z"></path>
+	<radialGradient id="SVG86hIfcXx" cx={-758.923} cy={815.212} r={14.222} gradientTransform="rotate(218.97 -11081.4 5923.97)scale(21.751 21.6904)" gradientUnits="userSpaceOnUse">
+		<stop offset={0.44} stopColor="#79e96d"></stop>
+		<stop offset={1} stopColor="#d0eb76"></stop>
+	</radialGradient>
+	<path fill="url(#SVG86hIfcXx)" d="M462.2 0h-128c-23.6 0-42.7 19.1-42.7 42.7V128c0 23.6 19.1 42.7 42.7 42.7h128c23.6 0 42.7-19.1 42.7-42.7V42.7c0-23.6-19.1-42.7-42.7-42.7"></path>
+	<radialGradient id="SVGj4kBUbvE" cx={-665.253} cy={799.243} r={14.222} gradientTransform="matrix(16 16 45.5476 -45.5476 -25752.482 47289.465)" gradientUnits="userSpaceOnUse">
+		<stop offset={0} stopColor="#20a85e"></stop>
+		<stop offset={0.944} stopColor="#09442a"></stop>
+	</radialGradient>
+	<path fill="url(#SVGj4kBUbvE)" d="M53.3 241.8h135.1c25.5 0 46.2 20.7 46.2 46.2v135.1c0 25.5-20.7 46.2-46.2 46.2H53.3c-25.5 0-46.2-20.7-46.2-46.2V288c0-25.5 20.7-46.2 46.2-46.2"></path>
+	<radialGradient id="SVGnKh77dwp" cx={-646.865} cy={859.937} r={14.222} gradientTransform="matrix(0 11.2 12.9 0 -10972.3 7623.2)" gradientUnits="userSpaceOnUse">
+		<stop offset={0.58} stopColor="#33a662" stopOpacity={0}></stop>
+		<stop offset={0.974} stopColor="#98f0b0"></stop>
+	</radialGradient>
+	<path fill="url(#SVGnKh77dwp)" fillOpacity={0.3} d="M53.3 241.8h135.1c25.5 0 46.2 20.7 46.2 46.2v135.1c0 25.5-20.7 46.2-46.2 46.2H53.3c-25.5 0-46.2-20.7-46.2-46.2V288c0-25.5 20.7-46.2 46.2-46.2"></path>
+	<path fill="#fff" d="M180.7 420.6h-35.1l-22-41.4c-.8-1.5-1.4-2.6-1.8-3.4c-.4-.9-.8-1.9-1.2-3.1h-.4c-.5 1.5-1.1 2.6-1.5 3.5c-.5.9-1.1 2-1.7 3.4l-22.8 41.1H61.1l39.7-65.1l-37-64.9h34.6l19.6 37c.8 1.5 1.5 2.8 2 4q.9 1.65 1.8 3.9h.4c.8-1.8 1.5-3.1 2-4.2c.5-1 1.3-2.4 2.2-4.1l20.3-36.6h33l-37.5 63.9z"></path>
+</svg>)
+}
+
 export default function AveryNotesPage() {
     const { user } = useAuth();
 
@@ -252,6 +337,7 @@ export default function AveryNotesPage() {
     const [inputFilter, setInputFilter] = React.useState<string>(initialFilters.inputFilter);
     const [doneFilter, setDoneFilter] = React.useState<string>(initialFilters.doneFilter);
     const [columnsMenuAnchor, setColumnsMenuAnchor] = React.useState<null | HTMLElement>(null);
+    const [exportMenuAnchor, setExportMenuAnchor] = React.useState<null | HTMLElement>(null);
     const [hiddenColumns, setHiddenColumns] = React.useState<Set<string>>(new Set());
 
     const hotRef = React.useRef<HotTableRef>(null);
@@ -443,8 +529,112 @@ export default function AveryNotesPage() {
         const worksheet = XLSX.utils.json_to_sheet(data);
         const workbook = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(workbook, worksheet, 'Sheet1');
-        const timestamp = new Date().toISOString().slice(0, 10);
+        const now = new Date();
+
+        const timestamp =
+            `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}_` +
+            `${String(now.getHours()).padStart(2, '0')}-${String(now.getMinutes()).padStart(2, '0')}-${String(now.getSeconds()).padStart(2, '0')}`;
+
         XLSX.writeFile(workbook, `ila-input-history-${timestamp}.xlsx`);
+    };
+
+    // Rows eligible for the report-format export: unassigned input_id and
+    // the "PO" input type are excluded per the report's requirements.
+    const reportEligibleRows = React.useMemo(
+        () => filteredRows.filter((r) => r.input_id && r.input_id !== 'po'),
+        [filteredRows]
+    );
+
+    // Exports in the layout of example_format_for_export_file.xlsx: one row
+    // per PO / Article / Department / Date, with quantities spread across
+    // per-defect-type columns instead of one row per raw record.
+    const handleExportExcelReportFormat = () => {
+        type GroupAcc = {
+            po_no: string;
+            short_group_code: string;
+            dept_id: string | null;
+            dateValue: Date | null;
+            qtyByInput: Record<string, number>;
+            returned: number;
+            remarks: string[];
+        };
+
+        const groups = new Map<string, GroupAcc>();
+
+        for (const row of reportEligibleRows) {
+            const dateOnly = toDateOnly(row.created_at);
+            const dateKey = dateOnly ? dateOnly.toISOString().slice(0, 10) : '';
+            const key = [row.po_no ?? '', row.short_group_code ?? '', row.dept_id ?? '', dateKey].join('|');
+
+            let group = groups.get(key);
+            if (!group) {
+                group = {
+                    po_no: row.po_no ?? '',
+                    short_group_code: row.short_group_code ?? '',
+                    dept_id: row.dept_id,
+                    dateValue: dateOnly,
+                    qtyByInput: {},
+                    returned: 0,
+                    remarks: [],
+                };
+                groups.set(key, group);
+            }
+
+            if (row.input_id) {
+                group.qtyByInput[row.input_id] = (group.qtyByInput[row.input_id] ?? 0) + (row.print_qty ?? 0);
+            }
+            group.returned += row.returned ?? 0;
+            if (row.remark && !group.remarks.includes(row.remark)) group.remarks.push(row.remark);
+        }
+
+        const headers = [
+            'Id',
+            'PO#',
+            'Article Number',
+            'Dept',
+            'Request Date',
+            ...REPORT_INPUT_COLUMNS.map((c) => c.label),
+            'Returned labels (pcs)',
+            'Remark',
+        ];
+
+        const data = Array.from(groups.values()).map((group, idx) => {
+            const record: Record<string, string | number | Date> = {
+                Id: idx + 1,
+                'PO#': group.po_no,
+                'Article Number': group.short_group_code,
+                Dept: group.dept_id ? (deptMap[group.dept_id] ?? group.dept_id) : '',
+                'Request Date': group.dateValue ?? '',
+            };
+            for (const col of REPORT_INPUT_COLUMNS) {
+                const qty = group.qtyByInput[col.id];
+                record[col.label] = qty ? qty : '';
+            }
+            record['Returned labels (pcs)'] = group.returned || '';
+            record['Remark'] = group.remarks.join('; ');
+            return record;
+        });
+
+        const worksheet = XLSX.utils.json_to_sheet(data, { header: headers });
+        // Format the "Request Date" column as dates rather than raw serials.
+        const dateColIndex = headers.indexOf('Request Date');
+        const dateColLetter = XLSX.utils.encode_col(dateColIndex);
+        for (let r = 0; r < data.length; r++) {
+            const cellRef = `${dateColLetter}${r + 2}`;
+            const cell = worksheet[cellRef];
+            if (cell && cell.v instanceof Date) {
+                cell.t = 'd';
+                cell.z = 'mm/dd/yyyy';
+            }
+        }
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, 'Sheet1');
+        const now = new Date();
+
+        const timestamp =
+            `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}_` +
+            `${String(now.getHours()).padStart(2, '0')}-${String(now.getMinutes()).padStart(2, '0')}-${String(now.getSeconds()).padStart(2, '0')}`;
+        XLSX.writeFile(workbook, `ila-input-report-${timestamp}.xlsx`);
     };
 
     // Cell renderers — Handsontable renders into plain DOM <td> nodes, so
@@ -602,12 +792,48 @@ export default function AveryNotesPage() {
                         <Button
                             size="small"
                             variant="outlined"
-                            startIcon={<FileDownloadIcon fontSize="small" />}
-                            onClick={handleExportExcel}
+                            startIcon={<ExcelIcon />}
+                            endIcon={<ArrowDropDownIcon />}
+                            onClick={(e) => setExportMenuAnchor(e.currentTarget)}
                             disabled={fetching || filteredRows.length === 0}
                         >
-                            Export to Excel ({`${filteredRows.length} record${filteredRows.length !== 1 ? 's' : ''}`})
+                            Export to Excel
                         </Button>
+                        <Menu
+                            anchorEl={exportMenuAnchor}
+                            open={Boolean(exportMenuAnchor)}
+                            onClose={() => setExportMenuAnchor(null)}
+                        >
+                            <MenuItem
+                                onClick={() => {
+                                    handleExportExcel();
+                                    setExportMenuAnchor(null);
+                                }}
+                                disabled={filteredRows.length === 0}
+                            >
+                                <ListItemText
+                                    primary="Export to Excel"
+                                    secondary={`${filteredRows.length} record${filteredRows.length !== 1 ? 's' : ''}`}
+                                />
+                            </MenuItem>
+                            <Tooltip
+                                title='Grouped by PO / Article / Dept / Date, excludes unassigned & "PO" input type'
+                                placement="left"
+                            >
+                                <MenuItem
+                                    onClick={() => {
+                                        handleExportExcelReportFormat();
+                                        setExportMenuAnchor(null);
+                                    }}
+                                    disabled={reportEligibleRows.length === 0}
+                                >
+                                    <ListItemText
+                                        primary="Export Report Reprint Format"
+                                        secondary={`${reportEligibleRows.length} record${reportEligibleRows.length !== 1 ? 's' : ''}`}
+                                    />
+                                </MenuItem>
+                            </Tooltip>
+                        </Menu>
                     </Box>
                 </Box>
 

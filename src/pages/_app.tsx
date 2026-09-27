@@ -12,18 +12,19 @@ function ThemedApp({ Component, pageProps }: any) {
                 palette: {
                     mode,
                     primary: {
-                        main: '#0097A7',    // Cyan-teal 700 — strong contrast on both light & dark
-                        light: '#4DD0E1',   // Cyan 300 — readable on dark backgrounds
-                        dark: '#006978',    // Cyan 900
-                        contrastText: '#ffffff',
-                    },
+                        main: '#188038', // Google Sheets-style green
+                        light: '#34A853', // Brighter green
+                        dark: '#0D652D', // Dark green
+                        contrastText: '#ffffff'
+                    }
                 },
                 typography: {
-                    fontFamily: '"Google Sans", "Google Sans Display", sans-serif',
-                },
+                    fontFamily: '"Google Sans", "Google Sans Display", sans-serif'
+                }
             }),
         [mode]
     );
+
     return (
         <ThemeProvider theme={theme}>
             <CssBaseline />
