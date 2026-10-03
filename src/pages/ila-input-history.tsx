@@ -22,6 +22,7 @@ import MenuItem from '@mui/material/MenuItem';
 import Select from '@mui/material/Select';
 import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
+import Pagination from '@mui/material/Pagination';
 import ArrowDropDownIcon from '@mui/icons-material/ArrowDropDown';
 import ClearIcon from '@mui/icons-material/Clear';
 // NOTE: ExcelIcon isn't a stock MUI icon — point this at wherever your
@@ -40,6 +41,7 @@ import 'handsontable/styles/ht-theme-main.min.css';
 import { registerTheme } from 'handsontable/themes';
 
 import { useAuth } from '../context/AuthContext';
+import { useColorMode } from '../context/ColorModeContext';
 import { supabase } from '../lib/supabaseClient';
 import AppLayout from '../components/AppLayout';
 import type { AveryNoteItem, Department, InputType } from '../types';
@@ -51,7 +53,9 @@ import tokens_main from 'handsontable/themes/static/variables/tokens/main';
 import colors_material from 'handsontable/themes/static/variables/colors/material';
 import icons_main from 'handsontable/themes/static/variables/icons/main';
 
-const MUIThemeForHTTable = registerTheme('custom-theme', {
+const HT_ACCENT_GREEN = '#188038';
+
+const MUIThemeForHTTableDark = registerTheme('custom-theme-dark', {
   tokens: tokens_main,
   colors: colors_material,
   icons: icons_main,
@@ -89,20 +93,75 @@ const MUIThemeForHTTable = registerTheme('custom-theme', {
     fontWeight: '400',
     backgroundColor: '#121212ff',
     backgroundSecondaryColor: '#121212ff',
-    foregroundColor: '#ffffffde',
-    foregroundSecondaryColor: '#ffffff99',
+    foregroundColor: '#ffffffff',
+    foregroundSecondaryColor: '#ffffffcc',
     borderColor: '#ffffff1f',
-    accentColor: '#006978ff',
+        accentColor: HT_ACCENT_GREEN,
     shadowColor: '#00000080',
     headerBackgroundColor: '#121212ff',
     headerForegroundColor: '#ffffffde',
     headerFontWeight: '500',
     headerHighlightedBackgroundColor: '#2c2c2cff',
-    headerHighlightedForegroundColor: 'hsl(188, 100%, 40%)',
+        headerHighlightedForegroundColor: HT_ACCENT_GREEN,
     cellHorizontalBorderColor: '#ffffff1f',
     cellVerticalBorderColor: '#ffffff1f',
-    cellSelectionBorderColor: '#006978ff',
-    cellSelectionBackgroundColor: '#00687867',
+        cellSelectionBorderColor: HT_ACCENT_GREEN,
+        cellSelectionBackgroundColor: '#18803833',
+    }
+});
+
+const MUIThemeForHTTableLight = registerTheme('custom-theme-light', {
+    tokens: tokens_main,
+    colors: colors_material,
+    icons: icons_main,
+    density: 'compact',
+    colorScheme: 'light',
+}).params({
+    colors: {
+        primary: {
+            '100': '#e8f5e9',
+            '200': '#c8e6c9',
+            '300': '#a5d6a7',
+            '400': '#81c784',
+            '500': HT_ACCENT_GREEN,
+            '600': '#0d652d'
+        },
+        palette: {
+            '50': '#fafafa',
+            '100': '#f5f5f5',
+            '200': '#eeeeee',
+            '300': '#e0e0e0',
+            '400': '#bdbdbd',
+            '500': '#9e9e9e',
+            '600': '#757575',
+            '700': '#616161',
+            '800': '#424242',
+            '900': '#212121',
+            '950': '#111111'
+        },
+        white: '#ffffffff',
+        black: '#000000ff'
+    },
+    tokens: {
+        fontFamily: 'Google Sans',
+        fontSize: '14px',
+        fontWeight: '400',
+        backgroundColor: '#ffffffff',
+        backgroundSecondaryColor: '#f8faf8ff',
+        foregroundColor: '#1f1f1f',
+        foregroundSecondaryColor: '#202124',
+        borderColor: '#dadce0',
+        accentColor: HT_ACCENT_GREEN,
+        shadowColor: '#0000001f',
+        headerBackgroundColor: '#f1f8f4',
+        headerForegroundColor: '#1f1f1f',
+        headerFontWeight: '500',
+        headerHighlightedBackgroundColor: '#d9efe0',
+        headerHighlightedForegroundColor: HT_ACCENT_GREEN,
+        cellHorizontalBorderColor: '#e5e7eb',
+        cellVerticalBorderColor: '#e5e7eb',
+        cellSelectionBorderColor: HT_ACCENT_GREEN,
+        cellSelectionBackgroundColor: '#18803826',
   }
 });
 
@@ -113,7 +172,7 @@ const COLUMNS: { key: ColumnKey; label: string }[] = [
     { key: 'seq', label: 'Seq' },
     { key: 'po_no', label: 'PO No' },
     { key: 'remark', label: 'Remark' },
-    { key: 'print_qty', label: 'Print Qty' },
+    { key: 'print_qty', label: 'Qty Input (pc)' },
     { key: 'returned', label: 'Returned' },
     { key: 'created_at', label: 'Created At' },
     { key: 'dept_id', label: 'Department' },
@@ -125,6 +184,8 @@ const COLUMNS: { key: ColumnKey; label: string }[] = [
 
 const COLUMN_VISIBILITY_STORAGE_KEY = 'avery-notes-column-visibility';
 const FILTERS_STORAGE_KEY = 'avery-notes-filters';
+const ROWS_PER_PAGE_OPTIONS = [25, 50, 100, 250, 500] as const;
+const ROWS_PER_PAGE_ALL = -1;
 
 function getTodayDateString(): string {
     const now = new Date();
@@ -138,10 +199,11 @@ type PersistedFilters = {
     search: string;
     dateFrom: string;
     dateTo: string;
-    deptFilter: string;
-    inputFilter: string;
+    deptFilter: string[];
+    inputFilter: string[];
     doneFilter: string;
     multiPoList: string[];
+    rowsPerPage: number;
 };
 
 // First-ever load (nothing saved yet) defaults the date range to today,
@@ -152,10 +214,11 @@ function getDefaultFilters(): PersistedFilters {
         search: '',
         dateFrom: today,
         dateTo: today,
-        deptFilter: '',
-        inputFilter: '',
+        deptFilter: [],
+        inputFilter: [],
         doneFilter: 'all',
         multiPoList: [],
+        rowsPerPage: 50,
     };
 }
 
@@ -166,60 +229,39 @@ function loadPersistedFilters(): PersistedFilters {
         const stored = window.localStorage.getItem(FILTERS_STORAGE_KEY);
         if (!stored) return defaults;
         const parsed = JSON.parse(stored) as Partial<PersistedFilters>;
+        const parseMultiSelect = (value: unknown): string[] => {
+            if (Array.isArray(value)) {
+                return value.filter((v): v is string => typeof v === 'string' && v.length > 0);
+            }
+            if (typeof value === 'string' && value) {
+                // Backward compatibility with previous single-select storage.
+                return [value];
+            }
+            return [];
+        };
+        const parsedRowsPerPage =
+            typeof parsed.rowsPerPage === 'number' && Number.isFinite(parsed.rowsPerPage)
+            ? Math.floor(parsed.rowsPerPage)
+                : defaults.rowsPerPage;
+        const normalizedRowsPerPage =
+            parsedRowsPerPage === ROWS_PER_PAGE_ALL || ROWS_PER_PAGE_OPTIONS.includes(parsedRowsPerPage as (typeof ROWS_PER_PAGE_OPTIONS)[number])
+            ? parsedRowsPerPage
+            : defaults.rowsPerPage;
         return {
             search: typeof parsed.search === 'string' ? parsed.search : defaults.search,
             dateFrom: typeof parsed.dateFrom === 'string' && parsed.dateFrom ? parsed.dateFrom : defaults.dateFrom,
             dateTo: typeof parsed.dateTo === 'string' && parsed.dateTo ? parsed.dateTo : defaults.dateTo,
-            deptFilter: typeof parsed.deptFilter === 'string' ? parsed.deptFilter : defaults.deptFilter,
-            inputFilter: typeof parsed.inputFilter === 'string' ? parsed.inputFilter : defaults.inputFilter,
+            deptFilter: parseMultiSelect(parsed.deptFilter),
+            inputFilter: parseMultiSelect(parsed.inputFilter),
             doneFilter: typeof parsed.doneFilter === 'string' ? parsed.doneFilter : defaults.doneFilter,
             multiPoList: Array.isArray(parsed.multiPoList)
                 ? parsed.multiPoList.filter((p): p is string => typeof p === 'string')
                 : defaults.multiPoList,
+            rowsPerPage: normalizedRowsPerPage,
         };
     } catch {
         return defaults;
     }
-}
-
-// Same hash-based palette idea as the old MUI Chip coloring, but as raw
-// hex values since Handsontable cells are plain DOM, not MUI components.
-const CHIP_PALETTE = [
-    { bg: '#0d3a66', color: '#90caf9', border: '#1565c0' }, // primary
-    { bg: '#4a1030', color: '#f48fb1', border: '#ad1457' }, // secondary
-    { bg: '#4d3800', color: '#ffe082', border: '#f57f17' }, // warning
-    { bg: '#123c1e', color: '#a5d6a7', border: '#2e7d32' }, // success
-    { bg: '#063a52', color: '#81d4fa', border: '#0277bd' }, // info
-    { bg: '#4d1414', color: '#ef9a9a', border: '#c62828' }, // error
-];
-const DEFAULT_CHIP = { bg: '#2a2a2a', color: '#bdbdbd', border: '#424242' };
-
-function paletteForId(id: string | null): typeof DEFAULT_CHIP {
-    if (!id) return DEFAULT_CHIP;
-    let hash = 0;
-    for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) >>> 0;
-    return CHIP_PALETTE[hash % CHIP_PALETTE.length];
-}
-
-function renderChip(td: HTMLTableCellElement, label: string | null, palette: typeof DEFAULT_CHIP) {
-    td.innerHTML = '';
-    td.style.textAlign = 'left';
-    if (!label) {
-        td.textContent = '—';
-        return;
-    }
-    const span = document.createElement('span');
-    span.textContent = label;
-    span.style.display = 'inline-block';
-    span.style.padding = '0.5px 8px';
-    span.style.borderRadius = '12px';
-    span.style.fontSize = '10px';
-    span.style.fontWeight = '500';
-    span.style.lineHeight = '18px';
-    span.style.background = palette.bg;
-    span.style.color = palette.color;
-    span.style.border = `1px solid ${palette.border}`;
-    td.appendChild(span);
 }
 
 function formatDateTime(value: string | null): string {
@@ -316,6 +358,7 @@ function ExcelIcon() {
 
 export default function AveryNotesPage() {
     const { user } = useAuth();
+    const { mode } = useColorMode();
 
     const [rows, setRows] = React.useState<AveryNoteItem[]>([]);
     const [departments, setDepartments] = React.useState<Department[]>([]);
@@ -333,9 +376,11 @@ export default function AveryNotesPage() {
     const [multiPoList, setMultiPoList] = React.useState<string[]>(initialFilters.multiPoList);
     const [multiPoText, setMultiPoText] = React.useState(initialFilters.multiPoList.join('\n'));
     const [multiPoNotFound, setMultiPoNotFound] = React.useState<string[]>([]);
-    const [deptFilter, setDeptFilter] = React.useState<string>(initialFilters.deptFilter);
-    const [inputFilter, setInputFilter] = React.useState<string>(initialFilters.inputFilter);
+    const [deptFilter, setDeptFilter] = React.useState<string[]>(initialFilters.deptFilter);
+    const [inputFilter, setInputFilter] = React.useState<string[]>(initialFilters.inputFilter);
     const [doneFilter, setDoneFilter] = React.useState<string>(initialFilters.doneFilter);
+    const [rowsPerPage, setRowsPerPage] = React.useState<number>(initialFilters.rowsPerPage);
+    const [page, setPage] = React.useState<number>(0);
     const [columnsMenuAnchor, setColumnsMenuAnchor] = React.useState<null | HTMLElement>(null);
     const [exportMenuAnchor, setExportMenuAnchor] = React.useState<null | HTMLElement>(null);
     const [hiddenColumns, setHiddenColumns] = React.useState<Set<string>>(new Set());
@@ -365,12 +410,13 @@ export default function AveryNotesPage() {
                 inputFilter,
                 doneFilter,
                 multiPoList,
+                rowsPerPage,
             };
             window.localStorage.setItem(FILTERS_STORAGE_KEY, JSON.stringify(toStore));
         } catch {
             // ignore unavailable storage
         }
-    }, [search, dateFrom, dateTo, deptFilter, inputFilter, doneFilter, multiPoList]);
+    }, [search, dateFrom, dateTo, deptFilter, inputFilter, doneFilter, multiPoList, rowsPerPage]);
 
     const isColumnVisible = React.useCallback(
         (key: ColumnKey) => !hiddenColumns.has(key),
@@ -462,11 +508,11 @@ export default function AveryNotesPage() {
                 const poNorm = (r.po_no ?? '').toLowerCase();
                 if (!multiPoList.some((p) => poNorm === p)) return false;
             }
-            if (deptFilter) {
-                if (r.dept_id !== deptFilter) return false;
+            if (deptFilter.length > 0) {
+                if (!r.dept_id || !deptFilter.includes(r.dept_id)) return false;
             }
-            if (inputFilter) {
-                if (r.input_id !== inputFilter) return false;
+            if (inputFilter.length > 0) {
+                if (!r.input_id || !inputFilter.includes(r.input_id)) return false;
             }
             if (doneFilter === 'done' && !r.done) return false;
             if (doneFilter === 'pending' && r.done) return false;
@@ -474,33 +520,76 @@ export default function AveryNotesPage() {
         });
     }, [rows, search, multiPoList, deptFilter, inputFilter, doneFilter]);
 
-    // Whether any filter differs from the today-only default, used to pick
-    // the right empty-state message and to enable/disable Clear Filters.
+    const effectiveRowsPerPage = React.useMemo(
+        () => (rowsPerPage === ROWS_PER_PAGE_ALL ? Math.max(1, filteredRows.length) : rowsPerPage),
+        [rowsPerPage, filteredRows.length]
+    );
+
+    React.useEffect(() => {
+        setPage(0);
+    }, [search, dateFrom, dateTo, multiPoList, deptFilter, inputFilter, doneFilter, rowsPerPage]);
+
+    const totalPages = React.useMemo(() => {
+        if (rowsPerPage === ROWS_PER_PAGE_ALL) return 1;
+        return Math.max(1, Math.ceil(filteredRows.length / effectiveRowsPerPage));
+    }, [filteredRows.length, rowsPerPage, effectiveRowsPerPage]);
+
+    React.useEffect(() => {
+        if (page >= totalPages) {
+            setPage(totalPages - 1);
+        }
+    }, [page, totalPages]);
+
+    const pagedRows = React.useMemo(() => {
+        if (rowsPerPage === ROWS_PER_PAGE_ALL) return filteredRows;
+        const start = page * effectiveRowsPerPage;
+        return filteredRows.slice(start, start + effectiveRowsPerPage);
+    }, [filteredRows, page, rowsPerPage, effectiveRowsPerPage]);
+
+    // A date range counts as an active filter whenever either date is set,
+    // including the default today-only range.
     const hasActiveFilters = React.useMemo(() => {
-        const today = getTodayDateString();
         return Boolean(
             search ||
             multiPoList.length > 0 ||
-            deptFilter ||
-            inputFilter ||
+            deptFilter.length > 0 ||
+            inputFilter.length > 0 ||
             doneFilter !== 'all' ||
-            dateFrom !== today ||
-            dateTo !== today
+            dateFrom ||
+            dateTo
         );
     }, [search, multiPoList, deptFilter, inputFilter, doneFilter, dateFrom, dateTo]);
 
     const handleClearFilters = React.useCallback(() => {
         const defaults = getDefaultFilters();
         setSearch(defaults.search);
-        setDateFrom(defaults.dateFrom);
-        setDateTo(defaults.dateTo);
+        setDateFrom('');
+        setDateTo('');
         setDeptFilter(defaults.deptFilter);
         setInputFilter(defaults.inputFilter);
         setDoneFilter(defaults.doneFilter);
         setMultiPoList(defaults.multiPoList);
         setMultiPoText('');
         setMultiPoNotFound([]);
+        setRowsPerPage(defaults.rowsPerPage);
+        setPage(0);
     }, []);
+
+    const activeFilterCount = React.useMemo(() => {
+        let count = 0;
+        if (search) count += 1;
+        if (multiPoList.length > 0) count += 1;
+        if (deptFilter.length > 0) count += 1;
+        if (inputFilter.length > 0) count += 1;
+        if (doneFilter !== 'all') count += 1;
+        if (dateFrom || dateTo) count += 1;
+        return count;
+    }, [search, multiPoList.length, deptFilter.length, inputFilter.length, doneFilter, dateFrom, dateTo]);
+
+    const rowsFrom = filteredRows.length === 0 ? 0 : page * effectiveRowsPerPage + 1;
+    const rowsTo = filteredRows.length === 0 ? 0 : Math.min((page + 1) * effectiveRowsPerPage, filteredRows.length);
+
+    const htTheme = mode === 'dark' ? MUIThemeForHTTableDark : MUIThemeForHTTableLight;
 
     const handleExportExcel = () => {
         const visibleColumns = COLUMNS.filter((c) => isColumnVisible(c.key));
@@ -637,9 +726,7 @@ export default function AveryNotesPage() {
         XLSX.writeFile(workbook, `ila-input-report-${timestamp}.xlsx`);
     };
 
-    // Cell renderers — Handsontable renders into plain DOM <td> nodes, so
-    // MUI components (Chip, icons) can't be mounted here; instead we build
-    // small styled spans that mimic the previous chip / icon look.
+    // Cell renderers — Handsontable renders into plain DOM <td> nodes.
     const printQtyRenderer = React.useCallback(
         (
             instance: Handsontable.Core,
@@ -651,13 +738,7 @@ export default function AveryNotesPage() {
         ) => {
             td.innerHTML = '';
             td.style.textAlign = 'right';
-            if (value == null || value === '') {
-                td.textContent = '—';
-                return td;
-            }
-            const isHigh = Number(value) > 1;
-            renderChip(td, String(value), isHigh ? CHIP_PALETTE[2] : DEFAULT_CHIP);
-            td.style.textAlign = 'right';
+            td.textContent = value == null || value === '' ? '—' : String(value);
             return td;
         },
         []
@@ -689,8 +770,10 @@ export default function AveryNotesPage() {
             prop: string | number,
             value: unknown
         ) => {
-            const id = (value as string) ?? null;
-            renderChip(td, id ? deptMap[id] ?? id : null, paletteForId(id));
+            td.innerHTML = '';
+            td.style.textAlign = 'left';
+            const id = (value as string) ?? '';
+            td.textContent = id ? deptMap[id] ?? id : '—';
             return td;
         },
         [deptMap]
@@ -705,8 +788,10 @@ export default function AveryNotesPage() {
             prop: string | number,
             value: unknown
         ) => {
-            const id = (value as string) ?? null;
-            renderChip(td, id ? inputMap[id] ?? id : null, paletteForId(id));
+            td.innerHTML = '';
+            td.style.textAlign = 'left';
+            const id = (value as string) ?? '';
+            td.textContent = id ? inputMap[id] ?? id : '—';
             return td;
         },
         [inputMap]
@@ -723,14 +808,12 @@ export default function AveryNotesPage() {
         ) => {
             td.innerHTML = '';
             td.style.textAlign = 'center';
-            const span = document.createElement('span');
-            span.textContent = value ? '✔' : '○';
-            span.style.color = value ? '#2e7d32' : '#9e9e9e';
-            span.style.fontWeight = '700';
-            td.appendChild(span);
+            td.style.color = value ? (mode === 'dark' ? '#81c995' : '#137333') : (mode === 'dark' ? '#e8eaed' : '#202124');
+            td.style.fontWeight = '600';
+            td.textContent = value ? 'Done' : 'Pending';
             return td;
         },
-        []
+        [mode]
     );
 
     const hotColumns = React.useMemo<Handsontable.ColumnSettings[]>(
@@ -839,124 +922,207 @@ export default function AveryNotesPage() {
 
                 <Card elevation={0} sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 3 }}>
                     <CardContent sx={{ p: 3 }}>
-                        {/* Search bar + date range */}
-                        <Box sx={{ mb: 2, display: 'flex', flexWrap: 'wrap', gap: 1.5, alignItems: 'center' }}>
-                            <TextField
-                                size="small"
-                                placeholder="Search by PO No, remark, seq…"
-                                value={search}
-                                onChange={handleSearchChange}
-                                InputProps={{
-                                    startAdornment: (
-                                        <InputAdornment position="start">
-                                            <SearchIcon fontSize="small" />
-                                        </InputAdornment>
-                                    )
+                        {/* Filter toolbar */}
+                        <Box sx={{ mb: 2, display: 'flex', flexWrap: 'wrap', gap: 1.25, alignItems: 'stretch' }}>
+                            <Box
+                                sx={{
+                                    flex: '1 1 760px',
+                                    minWidth: 300,
+                                    border: '1px solid',
+                                    borderColor: hasActiveFilters ? 'primary.main' : 'divider',
+                                    borderRadius: 2,
+                                    px: 1.25,
+                                    py: 1,
+                                    bgcolor: hasActiveFilters ? 'action.selected' : 'background.default',
                                 }}
-                                sx={{ width: { xs: '100%', sm: 280 } }}
-                            />
-                            <TextField
-                                size="small"
-                                label="From"
-                                type="date"
-                                value={dateFrom}
-                                onChange={(e) => setDateFrom(e.target.value)}
-                                InputLabelProps={{ shrink: true }}
-                                sx={{ width: 160 }}
-                            />
-                            <TextField
-                                size="small"
-                                label="To"
-                                type="date"
-                                value={dateTo}
-                                onChange={(e) => setDateTo(e.target.value)}
-                                InputLabelProps={{ shrink: true }}
-                                sx={{ width: 160 }}
-                            />
-                            {(dateFrom || dateTo) && (
-                                <Tooltip title="Clear date filter">
-                                    <IconButton size="small" onClick={() => { setDateFrom(''); setDateTo(''); }}>
-                                        <ClearIcon fontSize="small" />
-                                    </IconButton>
-                                </Tooltip>
-                            )}
-                            <Button
-                                size="small"
-                                variant={multiPoList.length > 0 ? 'contained' : 'outlined'}
-                                startIcon={<ListAltIcon fontSize="small" />}
-                                onClick={() => setMultiPoOpen(true)}
-                                sx={{ whiteSpace: 'nowrap' }}
                             >
-                                {multiPoList.length > 0 ? `Multi PO (${multiPoList.length})` : 'Multi PO Search'}
-                            </Button>
-                            {multiPoList.length > 0 && (
-                                <Tooltip title="Clear multi-PO filter">
-                                    <IconButton
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                                    <Typography variant="caption" sx={{ color: 'text.secondary', letterSpacing: 0.2 }}>
+                                        FILTERS
+                                    </Typography>
+                                    {hasActiveFilters && (
+                                        <Chip size="small" color="primary" variant="outlined" label={`${activeFilterCount} active`} />
+                                    )}
+                                </Box>
+                                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, alignItems: 'center' }}>
+                                    <TextField
                                         size="small"
-                                        onClick={() => { setMultiPoList([]); setMultiPoText(''); setMultiPoNotFound([]); }}
+                                        placeholder="Search by PO No, remark, seq..."
+                                        value={search}
+                                        onChange={handleSearchChange}
+                                        InputProps={{
+                                            startAdornment: (
+                                                <InputAdornment position="start">
+                                                    <SearchIcon fontSize="small" />
+                                                </InputAdornment>
+                                            )
+                                        }}
+                                        sx={{ width: { xs: '100%', sm: 250 } }}
+                                    />
+                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, flexWrap: 'wrap' }}>
+                                        <Typography variant="caption" color="text.secondary" sx={{ whiteSpace: 'nowrap' }}>
+                                            Created At
+                                        </Typography>
+                                        <TextField
+                                            size="small"
+                                            label="From"
+                                            type="date"
+                                            value={dateFrom}
+                                            onChange={(e) => setDateFrom(e.target.value)}
+                                            InputLabelProps={{ shrink: true }}
+                                            sx={{ width: 146 }}
+                                        />
+                                        <TextField
+                                            size="small"
+                                            label="To"
+                                            type="date"
+                                            value={dateTo}
+                                            onChange={(e) => setDateTo(e.target.value)}
+                                            InputLabelProps={{ shrink: true }}
+                                            sx={{ width: 146 }}
+                                        />
+                                        {(dateFrom || dateTo) && (
+                                            <Tooltip title="Clear Created At range">
+                                                <IconButton size="small" onClick={() => { setDateFrom(''); setDateTo(''); }}>
+                                                    <ClearIcon fontSize="small" />
+                                                </IconButton>
+                                            </Tooltip>
+                                        )}
+                                    </Box>
+                                    <FormControl size="small" sx={{ minWidth: 140 }}>
+                                        <InputLabel>Department</InputLabel>
+                                        <Select
+                                            multiple
+                                            value={deptFilter}
+                                            label="Department"
+                                            onChange={(e) => setDeptFilter(e.target.value as string[])}
+                                            renderValue={(selected) =>
+                                                (selected as string[])
+                                                    .map((id) => deptMap[id] ?? id)
+                                                    .join(', ') || 'All Departments'
+                                            }
+                                        >
+                                            <MenuItem
+                                                onClick={() =>
+                                                    setDeptFilter((prev) =>
+                                                        prev.length === departments.length ? [] : departments.map((d) => d.id)
+                                                    )
+                                                }
+                                            >
+                                                <Checkbox
+                                                    size="small"
+                                                    checked={departments.length > 0 && deptFilter.length === departments.length}
+                                                    indeterminate={deptFilter.length > 0 && deptFilter.length < departments.length}
+                                                />
+                                                <ListItemText primary="All Departments" />
+                                            </MenuItem>
+                                            {departments.map((d) => (
+                                                <MenuItem key={d.id} value={d.id}>
+                                                    <Checkbox size="small" checked={deptFilter.includes(d.id)} />
+                                                    <ListItemText primary={d.title} />
+                                                </MenuItem>
+                                            ))}
+                                        </Select>
+                                    </FormControl>
+                                    <FormControl size="small" sx={{ minWidth: 140 }}>
+                                        <InputLabel>Input Type</InputLabel>
+                                        <Select
+                                            multiple
+                                            value={inputFilter}
+                                            label="Input Type"
+                                            onChange={(e) => setInputFilter(e.target.value as string[])}
+                                            renderValue={(selected) =>
+                                                (selected as string[])
+                                                    .map((id) => inputMap[id] ?? id)
+                                                    .join(', ') || 'All Input Types'
+                                            }
+                                        >
+                                            <MenuItem
+                                                onClick={() =>
+                                                    setInputFilter((prev) =>
+                                                        prev.length === inputTypes.length ? [] : inputTypes.map((t) => t.id)
+                                                    )
+                                                }
+                                            >
+                                                <Checkbox
+                                                    size="small"
+                                                    checked={inputTypes.length > 0 && inputFilter.length === inputTypes.length}
+                                                    indeterminate={inputFilter.length > 0 && inputFilter.length < inputTypes.length}
+                                                />
+                                                <ListItemText primary="All Input Types" />
+                                            </MenuItem>
+                                            {inputTypes.map((t) => (
+                                                <MenuItem key={t.id} value={t.id}>
+                                                    <Checkbox size="small" checked={inputFilter.includes(t.id)} />
+                                                    <ListItemText primary={t.title} />
+                                                </MenuItem>
+                                            ))}
+                                        </Select>
+                                    </FormControl>
+                                    <FormControl size="small" sx={{ minWidth: 126 }}>
+                                        <InputLabel>Status</InputLabel>
+                                        <Select
+                                            value={doneFilter}
+                                            label="Status"
+                                            onChange={(e) => setDoneFilter(e.target.value)}
+                                        >
+                                            <MenuItem value="all">All Items</MenuItem>
+                                            <MenuItem value="done">Completed</MenuItem>
+                                            <MenuItem value="pending">Pending</MenuItem>
+                                        </Select>
+                                    </FormControl>
+                                </Box>
+                            </Box>
+
+                            <Box
+                                sx={{
+                                    flex: '0 0 auto',
+                                    minWidth: { xs: '100%', md: 220 },
+                                    border: '1px solid',
+                                    borderColor: 'divider',
+                                    borderRadius: 2,
+                                    px: 1.25,
+                                    py: 1,
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    gap: 1,
+                                }}
+                            >
+                                <Typography variant="caption" sx={{ color: 'text.secondary', letterSpacing: 0.2 }}>
+                                    ACTIONS
+                                </Typography>
+                                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, alignItems: 'center' }}>
+                                    <Button
+                                        size="small"
+                                        variant={multiPoList.length > 0 ? 'contained' : 'outlined'}
+                                        startIcon={<ListAltIcon fontSize="small" />}
+                                        onClick={() => setMultiPoOpen(true)}
+                                        sx={{ whiteSpace: 'nowrap' }}
                                     >
-                                        <ClearIcon fontSize="small" />
-                                    </IconButton>
-                                </Tooltip>
-                            )}
-                            <FormControl size="small" sx={{ minWidth: 140 }}>
-                                <InputLabel>Department</InputLabel>
-                                <Select
-                                    value={deptFilter}
-                                    label="Department"
-                                    onChange={(e) => setDeptFilter(e.target.value)}
-                                >
-                                    <MenuItem value="">All Departments</MenuItem>
-                                    {departments.map((d) => (
-                                        <MenuItem key={d.id} value={d.id}>{d.title}</MenuItem>
-                                    ))}
-                                </Select>
-                            </FormControl>
-                            <FormControl size="small" sx={{ minWidth: 140 }}>
-                                <InputLabel>Input Type</InputLabel>
-                                <Select
-                                    value={inputFilter}
-                                    label="Input Type"
-                                    onChange={(e) => setInputFilter(e.target.value)}
-                                >
-                                    <MenuItem value="">All Input Types</MenuItem>
-                                    {inputTypes.map((t) => (
-                                        <MenuItem key={t.id} value={t.id}>{t.title}</MenuItem>
-                                    ))}
-                                </Select>
-                            </FormControl>
-                            <FormControl size="small" sx={{ minWidth: 130 }}>
-                                <InputLabel>Status</InputLabel>
-                                <Select
-                                    value={doneFilter}
-                                    label="Status"
-                                    onChange={(e) => setDoneFilter(e.target.value)}
-                                >
-                                    <MenuItem value="all">All Items</MenuItem>
-                                    <MenuItem value="done">Completed</MenuItem>
-                                    <MenuItem value="pending">Pending</MenuItem>
-                                </Select>
-                            </FormControl>
-                            <Button
-                                size="small"
-                                variant="outlined"
-                                color="inherit"
-                                startIcon={<ClearIcon fontSize="small" />}
-                                onClick={handleClearFilters}
-                                disabled={!hasActiveFilters}
-                                sx={{ whiteSpace: 'nowrap' }}
-                            >
-                                Clear Filters
-                            </Button>
-                            <Button
-                                size="small"
-                                variant="outlined"
-                                startIcon={<ViewColumnIcon fontSize="small" />}
-                                onClick={(e) => setColumnsMenuAnchor(e.currentTarget)}
-                                sx={{ whiteSpace: 'nowrap', ml: 'auto' }}
-                            >
-                                Columns
-                            </Button>
+                                        {multiPoList.length > 0 ? `Multi PO (${multiPoList.length})` : 'Multi PO Search'}
+                                    </Button>
+                                    <Button
+                                        size="small"
+                                        variant={hasActiveFilters ? 'contained' : 'outlined'}
+                                        color={hasActiveFilters ? 'primary' : 'inherit'}
+                                        startIcon={<ClearIcon fontSize="small" />}
+                                        onClick={handleClearFilters}
+                                        disabled={!hasActiveFilters}
+                                        sx={{ whiteSpace: 'nowrap' }}
+                                    >
+                                        Clear Filters
+                                    </Button>
+                                    <Button
+                                        size="small"
+                                        variant="outlined"
+                                        startIcon={<ViewColumnIcon fontSize="small" />}
+                                        onClick={(e) => setColumnsMenuAnchor(e.currentTarget)}
+                                        sx={{ whiteSpace: 'nowrap' }}
+                                    >
+                                        Columns
+                                    </Button>
+                                </Box>
+                            </Box>
                             <Menu
                                 anchorEl={columnsMenuAnchor}
                                 open={Boolean(columnsMenuAnchor)}
@@ -987,7 +1153,30 @@ export default function AveryNotesPage() {
                         {/* Data grid — Handsontable handles column sorting, per-column
                             filters (via the header dropdown menu) and virtual scrolling
                             natively, so the old manual sort state/TablePagination are gone. */}
-                        <Box sx={{ position: 'relative' }}>
+                        <Box
+                            sx={{
+                                position: 'relative',
+                                ...(mode === 'light'
+                                    ? {
+                                        '& .ht-theme-main, & .ht-theme-main .wtHolder, & .ht-theme-main .handsontableInput': {
+                                            color: '#202124 !important',
+                                        },
+                                        '& .ht-theme-main td, & .ht-theme-main .wtBorder': {
+                                            color: '#202124 !important',
+                                        },
+                                        '& .ht-theme-main th, & .ht-theme-main .htCore thead th': {
+                                            color: '#202124 !important',
+                                        },
+                                        '& .ht-theme-main .ht_clone_left th, & .ht-theme-main .ht_clone_top th, & .ht-theme-main .ht_clone_top_left_corner th': {
+                                            color: '#202124 !important',
+                                        },
+                                        '& .ht-theme-main .htDimmed, & .ht-theme-main .htAutocompleteArrow': {
+                                            color: '#202124 !important',
+                                        },
+                                    }
+                                    : {}),
+                            }}
+                        >
                             {fetching && (
                                 <Box
                                     sx={{
@@ -1008,23 +1197,82 @@ export default function AveryNotesPage() {
                                     {hasActiveFilters ? 'No records match your filters.' : 'No records found for today.'}
                                 </Typography>
                             ) : (
-                                <HotTable
-                                    ref={hotRef}
-                                    theme={MUIThemeForHTTable}
-                                    data={filteredRows}
-                                    columns={hotColumns}
-                                    colHeaders={COLUMNS.map((c) => c.label)}
-                                    hiddenColumns={{ columns: hiddenColumnIndexes, indicators: false }}
-                                    rowHeaders={true}
-                                    columnSorting={true}
-                                    filters={true}
-                                    dropdownMenu={true}
-                                    manualColumnResize={true}
-                                    stretchH="all"
-                                    height={620}
-                                    readOnly={true}
-                                    licenseKey="non-commercial-and-evaluation"
-                                />
+                                <>
+                                    <HotTable
+                                        ref={hotRef}
+                                        theme={htTheme}
+                                        data={pagedRows}
+                                        columns={hotColumns}
+                                        colHeaders={COLUMNS.map((c) => c.label)}
+                                        hiddenColumns={{ columns: hiddenColumnIndexes, indicators: false }}
+                                        rowHeaders={(index: number) => String(page * effectiveRowsPerPage + index + 1)}
+                                        columnSorting={true}
+                                        filters={true}
+                                        dropdownMenu={true}
+                                        manualColumnResize={true}
+                                        stretchH="all"
+                                        height={620}
+                                        readOnly={true}
+                                        readOnlyCellClassName=""
+                                        afterGetColHeader={(col, th) => {
+                                            if (col === -1) {
+                                                th.textContent = '#';
+                                            }
+                                        }}
+                                        licenseKey="non-commercial-and-evaluation"
+                                    />
+                                    <Box
+                                        sx={{
+                                            mt: 1.5,
+                                            display: 'flex',
+                                            flexWrap: 'wrap',
+                                            alignItems: 'center',
+                                            justifyContent: 'space-between',
+                                            gap: 1,
+                                        }}
+                                    >
+                                        <Typography variant="caption" color="text.secondary">
+                                            Showing {formatWithCommas(rowsFrom)}-{formatWithCommas(rowsTo)} of {formatWithCommas(filteredRows.length)}
+                                        </Typography>
+                                        <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 1.25 }}>
+                                            <FormControl size="small" sx={{ minWidth: 132 }}>
+                                                <InputLabel>Rows per page</InputLabel>
+                                                <Select
+                                                    value={String(rowsPerPage)}
+                                                    label="Rows per page"
+                                                    onChange={(e) => {
+                                                        const next = Number(e.target.value);
+                                                        setRowsPerPage(next);
+                                                        setPage(0);
+                                                    }}
+                                                >
+                                                    {ROWS_PER_PAGE_OPTIONS.map((size) => (
+                                                        <MenuItem key={size} value={String(size)}>
+                                                            {size}
+                                                        </MenuItem>
+                                                    ))}
+                                                    <MenuItem value={String(ROWS_PER_PAGE_ALL)}>All</MenuItem>
+                                                </Select>
+                                            </FormControl>
+                                            {totalPages > 1 && rowsPerPage !== ROWS_PER_PAGE_ALL ? (
+                                                <Pagination
+                                                    size="small"
+                                                    color="primary"
+                                                    shape="rounded"
+                                                    page={page + 1}
+                                                    count={totalPages}
+                                                    onChange={(_, value) => setPage(value - 1)}
+                                                    siblingCount={1}
+                                                    boundaryCount={1}
+                                                />
+                                            ) : (
+                                                <Typography variant="caption" color="text.secondary" sx={{ px: 0.5 }}>
+                                                    {filteredRows.length === 0 ? 'No pages' : 'Page 1 / 1'}
+                                                </Typography>
+                                            )}
+                                        </Box>
+                                    </Box>
+                                </>
                             )}
                         </Box>
                     </CardContent>
@@ -1068,4 +1316,8 @@ export default function AveryNotesPage() {
             </Dialog>
         </AppLayout>
     );
+}
+
+function formatWithCommas(value: number): string {
+    return new Intl.NumberFormat('en-US').format(value);
 }
