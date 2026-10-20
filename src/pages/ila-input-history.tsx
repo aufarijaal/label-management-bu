@@ -634,6 +634,13 @@ export default function AveryNotesPage() {
         [filteredRows]
     );
 
+    // Rows eligible for PO replenishment summary export: sequence 1 is
+    // excluded, and rows without a PO number are skipped.
+    const poReplenishmentRows = React.useMemo(
+        () => filteredRows.filter((r) => r.seq !== 1 && Boolean((r.po_no ?? '').trim())),
+        [filteredRows]
+    );
+
     // Exports in the layout of example_format_for_export_file.xlsx: one row
     // per PO / Article / Department / Date, with quantities spread across
     // per-defect-type columns instead of one row per raw record.
@@ -724,6 +731,82 @@ export default function AveryNotesPage() {
             `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}_` +
             `${String(now.getHours()).padStart(2, '0')}-${String(now.getMinutes()).padStart(2, '0')}-${String(now.getSeconds()).padStart(2, '0')}`;
         XLSX.writeFile(workbook, `ila-input-report-${timestamp}.xlsx`);
+    };
+
+    // Exports one row per PO for replenishment monitoring.
+    // Includes only seq != 1 rows and aggregates departments, reasons,
+    // quantities, and replenishment dates per PO.
+    const handleExportExcelPoReplenishmentFormat = () => {
+        type GroupAcc = {
+            poNo: string;
+            deptSet: Set<string>;
+            reasonSet: Set<string>;
+            dateSet: Set<string>;
+            totalQty: number;
+        };
+
+        const groups = new Map<string, GroupAcc>();
+
+        for (const row of poReplenishmentRows) {
+            const poNo = (row.po_no ?? '').trim();
+            if (!poNo) continue;
+
+            let group = groups.get(poNo);
+            if (!group) {
+                group = {
+                    poNo,
+                    deptSet: new Set<string>(),
+                    reasonSet: new Set<string>(),
+                    dateSet: new Set<string>(),
+                    totalQty: 0,
+                };
+                groups.set(poNo, group);
+            }
+
+            const deptLabel = row.dept_id ? (deptMap[row.dept_id] ?? row.dept_id) : '';
+            if (deptLabel) group.deptSet.add(deptLabel);
+
+            const reasonLabel = row.input_id ? (inputMap[row.input_id] ?? row.input_id) : '';
+            if (reasonLabel) group.reasonSet.add(reasonLabel);
+
+            const dateOnly = toDateOnly(row.created_at);
+            if (dateOnly) {
+                const y = dateOnly.getFullYear();
+                const m = String(dateOnly.getMonth() + 1).padStart(2, '0');
+                const d = String(dateOnly.getDate()).padStart(2, '0');
+                group.dateSet.add(`${y}-${m}-${d}`);
+            }
+
+            group.totalQty += row.print_qty ?? 0;
+        }
+
+        const headers = [
+            'PO No',
+            'Replenishment Depts',
+            'Issued Qty (pc)',
+            'Qty Replenishment (pc)',
+            'Reasons',
+            'Replenishment Date',
+        ];
+
+        const data = Array.from(groups.values()).map((group) => ({
+            'PO No': group.poNo,
+            'Replenishment Depts': Array.from(group.deptSet).join(', '),
+            'Issued Qty (pc)': group.totalQty,
+            'Qty Replenishment (pc)': group.totalQty,
+            Reasons: Array.from(group.reasonSet).join(', '),
+            'Replenishment Date': Array.from(group.dateSet).join(', '),
+        }));
+
+        const worksheet = XLSX.utils.json_to_sheet(data, { header: headers });
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, 'Sheet1');
+
+        const now = new Date();
+        const timestamp =
+            `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}_` +
+            `${String(now.getHours()).padStart(2, '0')}-${String(now.getMinutes()).padStart(2, '0')}-${String(now.getSeconds()).padStart(2, '0')}`;
+        XLSX.writeFile(workbook, `ila-input-replenishment-po-${timestamp}.xlsx`);
     };
 
     // Cell renderers — Handsontable renders into plain DOM <td> nodes.
@@ -913,6 +996,23 @@ export default function AveryNotesPage() {
                                     <ListItemText
                                         primary="Export Report Reprint Format"
                                         secondary={`${reportEligibleRows.length} record${reportEligibleRows.length !== 1 ? 's' : ''}`}
+                                    />
+                                </MenuItem>
+                            </Tooltip>
+                            <Tooltip
+                                title='One row per PO, excludes seq = 1, with merged depts/reasons/dates and summed quantities'
+                                placement="left"
+                            >
+                                <MenuItem
+                                    onClick={() => {
+                                        handleExportExcelPoReplenishmentFormat();
+                                        setExportMenuAnchor(null);
+                                    }}
+                                    disabled={poReplenishmentRows.length === 0}
+                                >
+                                    <ListItemText
+                                        primary="Export PO Replenishment Format"
+                                        secondary={`${poReplenishmentRows.length} record${poReplenishmentRows.length !== 1 ? 's' : ''}`}
                                     />
                                 </MenuItem>
                             </Tooltip>
