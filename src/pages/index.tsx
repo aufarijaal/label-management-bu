@@ -10,18 +10,18 @@ import Paper from '@mui/material/Paper';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 import LabelIcon from '@mui/icons-material/Label';
+import PlaylistAddCheckIcon from '@mui/icons-material/PlaylistAddCheck';
 import LocalShippingIcon from '@mui/icons-material/LocalShipping';
 import ImageIcon from '@mui/icons-material/Image';
 import { supabase } from '../lib/supabaseClient';
 import { useAuth } from '../context/AuthContext';
 
-// Dummy menu items - swap hrefs for real routes once those pages exist
 const MENU_ITEMS = [
     { label: 'PO Movement', href: '/po-movement', icon: LocalShippingIcon },
-    { label: 'Visual Maker', href: '/visual-maker', icon: ImageIcon }
+    { label: 'Visual Maker', href: '/visual-maker', icon: ImageIcon },
+    { label: 'Variant Sequence', href: '/variant-material-sequence', icon: PlaylistAddCheckIcon }
 ];
 
-// Google "G" logo SVG
 const GoogleIcon = () => (
     <Box component="svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" sx={{ width: 20, height: 20, mr: 1.5 }}>
         <path
@@ -44,14 +44,7 @@ export default function HomePage() {
     const { user, loading } = useAuth();
     const router = useRouter();
     const [signingIn, setSigningIn] = React.useState(false);
-    const [error, setError] = React.useState(null);
-
-    // Redirect to dashboard if already authenticated
-    // React.useEffect(() => {
-    //     if (!loading && user) {
-    //         router.replace('/dashboard');
-    //     }
-    // }, [user, loading, router]);
+    const [error, setError] = React.useState<string | null>(null);
 
     const handleGoogleSignIn = async () => {
         setError(null);
@@ -82,8 +75,7 @@ export default function HomePage() {
                     background: '#121212',
                     color: '#fff',
                     minHeight: '100vh',
-                    display: 'flex',
-                    alignItems: 'center'
+                    py: { xs: 6, md: 8 }
                 }}
             >
                 <Container maxWidth="md">
@@ -126,10 +118,9 @@ export default function HomePage() {
                             </Button>
                         )}
 
-                        {/* Dummy grid of menus */}
                         <Grid container spacing={2} justifyContent="center" sx={{ mt: 6 }}>
                             {MENU_ITEMS.map(({ label, href, icon: Icon }) => (
-                                <Grid item xs={6} sm={4} key={label}>
+                                <Grid item xs={12} sm={4} key={label}>
                                     <Paper
                                         component="button"
                                         onClick={() => router.push(href)}
