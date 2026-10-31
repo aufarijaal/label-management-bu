@@ -218,7 +218,7 @@ function getDefaultFilters(): PersistedFilters {
         inputFilter: [],
         doneFilter: 'all',
         multiPoList: [],
-        rowsPerPage: 50,
+        rowsPerPage: ROWS_PER_PAGE_ALL,
     };
 }
 
@@ -978,7 +978,7 @@ export default function AveryNotesPage() {
                                 disabled={filteredRows.length === 0}
                             >
                                 <ListItemText
-                                    primary="Export to Excel"
+                                    primary="Default"
                                     secondary={`${filteredRows.length} record${filteredRows.length !== 1 ? 's' : ''}`}
                                 />
                             </MenuItem>
@@ -994,25 +994,8 @@ export default function AveryNotesPage() {
                                     disabled={reportEligibleRows.length === 0}
                                 >
                                     <ListItemText
-                                        primary="Export Report Reprint Format"
+                                        primary="Replenishment Format"
                                         secondary={`${reportEligibleRows.length} record${reportEligibleRows.length !== 1 ? 's' : ''}`}
-                                    />
-                                </MenuItem>
-                            </Tooltip>
-                            <Tooltip
-                                title='One row per PO, excludes seq = 1, with merged depts/reasons/dates and summed quantities'
-                                placement="left"
-                            >
-                                <MenuItem
-                                    onClick={() => {
-                                        handleExportExcelPoReplenishmentFormat();
-                                        setExportMenuAnchor(null);
-                                    }}
-                                    disabled={poReplenishmentRows.length === 0}
-                                >
-                                    <ListItemText
-                                        primary="Export PO Replenishment Format"
-                                        secondary={`${poReplenishmentRows.length} record${poReplenishmentRows.length !== 1 ? 's' : ''}`}
                                     />
                                 </MenuItem>
                             </Tooltip>
@@ -1298,6 +1281,33 @@ export default function AveryNotesPage() {
                                 </Typography>
                             ) : (
                                 <>
+                                    <Box
+                                        sx={{
+                                            display: 'flex',
+                                            justifyContent: 'flex-end',
+                                            mb: 1.5,
+                                        }}
+                                    >
+                                        <FormControl size="small" sx={{ minWidth: 132 }}>
+                                            <InputLabel>Rows per page</InputLabel>
+                                            <Select
+                                                value={String(rowsPerPage)}
+                                                label="Rows per page"
+                                                onChange={(e) => {
+                                                    const next = Number(e.target.value);
+                                                    setRowsPerPage(next);
+                                                    setPage(0);
+                                                }}
+                                            >
+                                                {ROWS_PER_PAGE_OPTIONS.map((size) => (
+                                                    <MenuItem key={size} value={String(size)}>
+                                                        {size}
+                                                    </MenuItem>
+                                                ))}
+                                                <MenuItem value={String(ROWS_PER_PAGE_ALL)}>All</MenuItem>
+                                            </Select>
+                                        </FormControl>
+                                    </Box>
                                     <HotTable
                                         ref={hotRef}
                                         theme={htTheme}
@@ -1335,25 +1345,6 @@ export default function AveryNotesPage() {
                                             Showing {formatWithCommas(rowsFrom)}-{formatWithCommas(rowsTo)} of {formatWithCommas(filteredRows.length)}
                                         </Typography>
                                         <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 1.25 }}>
-                                            <FormControl size="small" sx={{ minWidth: 132 }}>
-                                                <InputLabel>Rows per page</InputLabel>
-                                                <Select
-                                                    value={String(rowsPerPage)}
-                                                    label="Rows per page"
-                                                    onChange={(e) => {
-                                                        const next = Number(e.target.value);
-                                                        setRowsPerPage(next);
-                                                        setPage(0);
-                                                    }}
-                                                >
-                                                    {ROWS_PER_PAGE_OPTIONS.map((size) => (
-                                                        <MenuItem key={size} value={String(size)}>
-                                                            {size}
-                                                        </MenuItem>
-                                                    ))}
-                                                    <MenuItem value={String(ROWS_PER_PAGE_ALL)}>All</MenuItem>
-                                                </Select>
-                                            </FormControl>
                                             {totalPages > 1 && rowsPerPage !== ROWS_PER_PAGE_ALL ? (
                                                 <Pagination
                                                     size="small"
