@@ -21,7 +21,6 @@ import TableBody from '@mui/material/TableBody';
 import TableCell from '@mui/material/TableCell';
 import TableContainer from '@mui/material/TableContainer';
 import TableHead from '@mui/material/TableHead';
-import TablePagination from '@mui/material/TablePagination';
 import TableRow from '@mui/material/TableRow';
 import TextField from '@mui/material/TextField';
 import Tooltip from '@mui/material/Tooltip';
@@ -47,8 +46,6 @@ export default function DepartmentsPage() {
     const [fetchError, setFetchError] = React.useState<string | null>(null);
 
     const [search, setSearch] = React.useState('');
-    const [page, setPage] = React.useState(0);
-    const [rowsPerPage, setRowsPerPage] = React.useState(10);
 
     const [dialogOpen, setDialogOpen] = React.useState(false);
     const [dialogMode, setDialogMode] = React.useState<'add' | 'edit'>('add');
@@ -93,8 +90,6 @@ export default function DepartmentsPage() {
             (r) => r.id.toLowerCase().includes(q) || r.title.toLowerCase().includes(q)
         );
     }, [rows, search]);
-
-    const paginatedRows = filteredRows.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage);
 
     const openAddDialog = () => {
         setDialogMode('add');
@@ -201,7 +196,7 @@ export default function DepartmentsPage() {
                                 size="small"
                                 placeholder="Search by ID or Title…"
                                 value={search}
-                                onChange={(e) => { setSearch(e.target.value); setPage(0); }}
+                                onChange={(e) => { setSearch(e.target.value); }}
                                 InputProps={{
                                     startAdornment: (
                                         <InputAdornment position="start">
@@ -252,7 +247,7 @@ export default function DepartmentsPage() {
                                                 <CircularProgress size={32} />
                                             </TableCell>
                                         </TableRow>
-                                    ) : paginatedRows.length === 0 ? (
+                                    ) : filteredRows.length === 0 ? (
                                         <TableRow>
                                             <TableCell colSpan={3} align="center" sx={{ py: 6 }}>
                                                 <Typography variant="body2" color="text.secondary">
@@ -261,7 +256,7 @@ export default function DepartmentsPage() {
                                             </TableCell>
                                         </TableRow>
                                     ) : (
-                                        paginatedRows.map((row) => (
+                                        filteredRows.map((row) => (
                                             <TableRow key={row.id} hover sx={{ '&:last-child td': { borderBottom: 0 } }}>
                                                 <TableCell>
                                                     <Typography variant="body2" fontFamily="monospace">
@@ -288,18 +283,6 @@ export default function DepartmentsPage() {
                             </Table>
                         </TableContainer>
 
-                        <TablePagination
-                            component="div"
-                            count={filteredRows.length}
-                            page={page}
-                            onPageChange={(_, newPage) => setPage(newPage)}
-                            rowsPerPage={rowsPerPage}
-                            onRowsPerPageChange={(e) => {
-                                setRowsPerPage(parseInt(e.target.value, 10));
-                                setPage(0);
-                            }}
-                            rowsPerPageOptions={[10, 25, 50, 100]}
-                        />
                     </CardContent>
                 </Card>
             </Box>

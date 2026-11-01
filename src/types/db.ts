@@ -14,10 +14,11 @@ export type AveryNoteItem = {
     id: string;
     seq: number | null;
     po_no: string | null;
+    art: string | null;
     remark: string | null;
     print_qty: number | null;
     created_at: string | null;
-    done: boolean | null;
+    done: 'pending' | 'cancel' | 'done' | boolean | null;
     input_id: string | null;
     dept_id: string | null;
     returned: number | null;

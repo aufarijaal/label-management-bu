@@ -4,7 +4,6 @@ import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Card from '@mui/material/Card';
 import CardContent from '@mui/material/CardContent';
-import Chip from '@mui/material/Chip';
 import CircularProgress from '@mui/material/CircularProgress';
 import Container from '@mui/material/Container';
 import Divider from '@mui/material/Divider';
@@ -19,10 +18,6 @@ import Checkbox from '@mui/material/Checkbox';
 import FormControl from '@mui/material/FormControl';
 import InputLabel from '@mui/material/InputLabel';
 import Typography from '@mui/material/Typography';
-import LabelIcon from '@mui/icons-material/Label';
-import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
-import GroupIcon from '@mui/icons-material/Group';
-import PrintIcon from '@mui/icons-material/Print';
 import {
     BarChart,
     Bar,
@@ -93,11 +88,6 @@ export default function DashboardPage() {
         (id: string) => (id === UNASSIGNED_KEY ? 'Unassigned' : (inputTypeMap[id] ?? id)),
         [inputTypeMap]
     );
-
-    // All-time stats (not date-filtered)
-    const [statsLoading, setStatsLoading] = React.useState(true);
-    const [totalAllTime, setTotalAllTime] = React.useState(0);
-    const [topDeptId, setTopDeptId] = React.useState<string | null>(null);
 
     const inputTypeFilterOptions = React.useMemo(
         () => [
@@ -175,38 +165,6 @@ export default function DashboardPage() {
     }, []);
 
     React.useEffect(() => {
-        async function fetchStats() {
-            setStatsLoading(true);
-
-            const { data, error } = await supabase
-                .from('ila_avery_note_items')
-                .select('print_qty, dept_id');
-
-            if (error || !data) {
-                setStatsLoading(false);
-                return;
-            }
-
-            let total = 0;
-            const deptTotals: Record<string, number> = {};
-
-            for (const row of data) {
-                total += row.print_qty ?? 0;
-                if (!row.dept_id) continue;
-                deptTotals[row.dept_id] = (deptTotals[row.dept_id] ?? 0) + (row.print_qty ?? 0);
-            }
-
-            const topKey = Object.entries(deptTotals).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
-
-            setTotalAllTime(total);
-            setTopDeptId(topKey);
-            setStatsLoading(false);
-        }
-
-        fetchStats();
-    }, []);
-
-    React.useEffect(() => {
         async function fetchChartData() {
             setChartLoading(true);
             const from = new Date();
@@ -254,53 +212,6 @@ export default function DashboardPage() {
                         </Typography>
                     </Box>
                 </Box>
-
-                {/* Stats cards */}
-                <Grid container spacing={3} sx={{ mb: 4 }}>
-                    {[
-                        { label: 'Total Replenishments Requested (pc)', value: totalAllTime.toLocaleString(), icon: <LabelIcon fontSize="large" />, color: '#0097A7', loading: statsLoading },
-                        { label: 'Most Active Department', value: topDeptId ? deptLabel(topDeptId) : '—', icon: <GroupIcon fontSize="large" />, color: '#EA4335', loading: statsLoading },
-                    ].map((stat) => (
-                        <Grid item xs={12} sm={6} lg={4} key={stat.label}>
-                            <Card
-                                elevation={0}
-                                sx={{
-                                    border: '1px solid',
-                                    borderColor: 'divider',
-                                    borderRadius: 3,
-                                    height: '100%'
-                                }}
-                            >
-                                <CardContent sx={{ p: 3 }}>
-                                    <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
-                                        <Box>
-                                            <Typography variant="body2" color="text.secondary" gutterBottom>
-                                                {stat.label}
-                                            </Typography>
-                                            {stat.loading ? (
-                                                <CircularProgress size={28} sx={{ mt: 0.5 }} />
-                                            ) : (
-                                                <Typography variant="h4" fontWeight={700}>
-                                                    {stat.value}
-                                                </Typography>
-                                            )}
-                                        </Box>
-                                        <Box
-                                            sx={{
-                                                p: 1.5,
-                                                borderRadius: 2,
-                                                bgcolor: `${stat.color}18`,
-                                                color: stat.color
-                                            }}
-                                        >
-                                            {stat.icon}
-                                        </Box>
-                                    </Box>
-                                </CardContent>
-                            </Card>
-                        </Grid>
-                    ))}
-                </Grid>
 
                 {/* Print Qty by Department chart */}
                 <Card elevation={0} sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 3, mb: 4 }}>

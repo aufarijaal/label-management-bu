@@ -168,12 +168,17 @@ const MUIThemeForHTTableLight = registerTheme('custom-theme-light', {
 
 type ColumnKey = keyof AveryNoteItem;
 
+type StatusValue = 'pending' | 'cancel' | 'done';
+
+const STATUS_VALUES: StatusValue[] = ['pending', 'cancel', 'done'];
+
 const COLUMNS: { key: ColumnKey; label: string }[] = [
     { key: 'seq', label: 'Seq' },
     { key: 'po_no', label: 'PO No' },
+    { key: 'art', label: 'Article Number' },
     { key: 'remark', label: 'Remark' },
     { key: 'print_qty', label: 'Qty Input (pc)' },
-    { key: 'returned', label: 'Returned' },
+    { key: 'returned', label: 'Returned (pc)' },
     { key: 'created_at', label: 'Created At' },
     { key: 'dept_id', label: 'Department' },
     { key: 'input_id', label: 'Input Type' },
@@ -296,6 +301,23 @@ function toDateOnly(value: string | null): Date | null {
     } catch {
         return null;
     }
+}
+
+function normalizeStatus(value: unknown): StatusValue {
+    if (typeof value === 'string') {
+        const lowered = value.trim().toLowerCase();
+        if (lowered === 'done' || lowered === 'pending' || lowered === 'cancel') return lowered;
+    }
+    if (value === true) return 'done';
+    if (value === false || value == null) return 'pending';
+    return 'pending';
+}
+
+function statusLabel(value: unknown): string {
+    const status = normalizeStatus(value);
+    if (status === 'done') return 'Done';
+    if (status === 'cancel') return 'Cancel';
+    return 'Pending';
 }
 
 function ExcelIcon() {
@@ -457,7 +479,7 @@ export default function AveryNotesPage() {
 
             let itemsQuery = supabase
                 .from('ila_avery_note_items')
-                .select('id, seq, po_no, remark, print_qty, created_at, done, input_id, dept_id, returned, short_group_code, label_id')
+                .select('id, seq, po_no, art, remark, print_qty, created_at, done, input_id, dept_id, returned, short_group_code, label_id')
                 .order('seq', { ascending: true });
 
             // Pull only the rows within the selected date range from the
@@ -514,8 +536,10 @@ export default function AveryNotesPage() {
             if (inputFilter.length > 0) {
                 if (!r.input_id || !inputFilter.includes(r.input_id)) return false;
             }
-            if (doneFilter === 'done' && !r.done) return false;
-            if (doneFilter === 'pending' && r.done) return false;
+            const status = normalizeStatus(r.done);
+            if (doneFilter === 'done' && status !== 'done') return false;
+            if (doneFilter === 'pending' && status !== 'pending') return false;
+            if (doneFilter === 'cancel' && status !== 'cancel') return false;
             return true;
         });
     }, [rows, search, multiPoList, deptFilter, inputFilter, doneFilter]);
@@ -607,7 +631,7 @@ export default function AveryNotesPage() {
                         record[col.label] = row.input_id ? (inputMap[row.input_id] ?? row.input_id) : '';
                         break;
                     case 'done':
-                        record[col.label] = row.done ? 'Done' : 'Pending';
+                        record[col.label] = statusLabel(row.done);
                         break;
                     default:
                         record[col.label] = row[col.key] ?? '';
@@ -630,14 +654,14 @@ export default function AveryNotesPage() {
     // Rows eligible for the report-format export: unassigned input_id and
     // the "PO" input type are excluded per the report's requirements.
     const reportEligibleRows = React.useMemo(
-        () => filteredRows.filter((r) => r.input_id && r.input_id !== 'po'),
+        () => filteredRows.filter((r) => r.input_id && r.input_id !== 'po' && normalizeStatus(r.done) !== 'cancel'),
         [filteredRows]
     );
 
     // Rows eligible for PO replenishment summary export: sequence 1 is
     // excluded, and rows without a PO number are skipped.
     const poReplenishmentRows = React.useMemo(
-        () => filteredRows.filter((r) => r.seq !== 1 && Boolean((r.po_no ?? '').trim())),
+        () => filteredRows.filter((r) => r.seq !== 1 && Boolean((r.po_no ?? '').trim()) && normalizeStatus(r.done) !== 'cancel'),
         [filteredRows]
     );
 
@@ -647,7 +671,7 @@ export default function AveryNotesPage() {
     const handleExportExcelReportFormat = () => {
         type GroupAcc = {
             po_no: string;
-            short_group_code: string;
+            art: string;
             dept_id: string | null;
             dateValue: Date | null;
             qtyByInput: Record<string, number>;
@@ -660,13 +684,13 @@ export default function AveryNotesPage() {
         for (const row of reportEligibleRows) {
             const dateOnly = toDateOnly(row.created_at);
             const dateKey = dateOnly ? dateOnly.toISOString().slice(0, 10) : '';
-            const key = [row.po_no ?? '', row.short_group_code ?? '', row.dept_id ?? '', dateKey].join('|');
+            const key = [row.po_no ?? '', row.art ?? '', row.dept_id ?? '', dateKey].join('|');
 
             let group = groups.get(key);
             if (!group) {
                 group = {
                     po_no: row.po_no ?? '',
-                    short_group_code: row.short_group_code ?? '',
+                    art: row.art ?? '',
                     dept_id: row.dept_id,
                     dateValue: dateOnly,
                     qtyByInput: {},
@@ -698,7 +722,7 @@ export default function AveryNotesPage() {
             const record: Record<string, string | number | Date> = {
                 Id: idx + 1,
                 'PO#': group.po_no,
-                'Article Number': group.short_group_code,
+                'Article Number': group.art,
                 Dept: group.dept_id ? (deptMap[group.dept_id] ?? group.dept_id) : '',
                 'Request Date': group.dateValue ?? '',
             };
@@ -739,6 +763,7 @@ export default function AveryNotesPage() {
     const handleExportExcelPoReplenishmentFormat = () => {
         type GroupAcc = {
             poNo: string;
+            artSet: Set<string>;
             deptSet: Set<string>;
             reasonSet: Set<string>;
             dateSet: Set<string>;
@@ -755,6 +780,7 @@ export default function AveryNotesPage() {
             if (!group) {
                 group = {
                     poNo,
+                    artSet: new Set<string>(),
                     deptSet: new Set<string>(),
                     reasonSet: new Set<string>(),
                     dateSet: new Set<string>(),
@@ -762,6 +788,9 @@ export default function AveryNotesPage() {
                 };
                 groups.set(poNo, group);
             }
+
+            const art = (row.art ?? '').trim();
+            if (art) group.artSet.add(art);
 
             const deptLabel = row.dept_id ? (deptMap[row.dept_id] ?? row.dept_id) : '';
             if (deptLabel) group.deptSet.add(deptLabel);
@@ -782,6 +811,7 @@ export default function AveryNotesPage() {
 
         const headers = [
             'PO No',
+            'Article Number',
             'Replenishment Depts',
             'Issued Qty (pc)',
             'Qty Replenishment (pc)',
@@ -791,6 +821,7 @@ export default function AveryNotesPage() {
 
         const data = Array.from(groups.values()).map((group) => ({
             'PO No': group.poNo,
+            'Article Number': Array.from(group.artSet).join(', '),
             'Replenishment Depts': Array.from(group.deptSet).join(', '),
             'Issued Qty (pc)': group.totalQty,
             'Qty Replenishment (pc)': group.totalQty,
@@ -890,13 +921,81 @@ export default function AveryNotesPage() {
             value: unknown
         ) => {
             td.innerHTML = '';
+            const status = normalizeStatus(value);
             td.style.textAlign = 'center';
-            td.style.color = value ? (mode === 'dark' ? '#81c995' : '#137333') : (mode === 'dark' ? '#e8eaed' : '#202124');
-            td.style.fontWeight = '600';
-            td.textContent = value ? 'Done' : 'Pending';
+            td.style.backgroundColor = 'transparent';
+            td.style.color = '';
+
+            const badge = document.createElement('span');
+            badge.style.display = 'inline-block';
+            badge.style.padding = '2px 8px';
+            badge.style.borderRadius = '999px';
+            badge.style.fontWeight = '600';
+            badge.style.fontSize = '12px';
+            badge.style.lineHeight = '1.2';
+            if (status === 'done') {
+                badge.style.backgroundColor = mode === 'dark' ? '#0f3a20' : '#e6f4ea';
+                badge.style.color = mode === 'dark' ? '#81c995' : '#137333';
+            } else if (status === 'cancel') {
+                badge.style.backgroundColor = mode === 'dark' ? '#4a1f1f' : '#fce8e6';
+                badge.style.color = mode === 'dark' ? '#f28b82' : '#a50e0e';
+            } else {
+                badge.style.backgroundColor = mode === 'dark' ? '#3c2f0b' : '#fef7e0';
+                badge.style.color = mode === 'dark' ? '#fdd663' : '#8a5a00';
+            }
+            badge.textContent = statusLabel(status);
+            td.appendChild(badge);
             return td;
         },
         [mode]
+    );
+
+    const handleCellChanges = React.useCallback(
+        async (changes: [number, string | number, unknown, unknown][]) => {
+            for (const [rowIndex, prop, oldValue, newValue] of changes) {
+                const key = String(prop) as ColumnKey;
+                if (!['remark', 'dept_id', 'input_id', 'returned', 'done'].includes(key)) continue;
+
+                const row = pagedRows[rowIndex];
+                if (!row?.id) continue;
+
+                let normalized: unknown;
+                if (key === 'remark') {
+                    normalized = typeof newValue === 'string' ? newValue : String(newValue ?? '');
+                } else if (key === 'dept_id' || key === 'input_id') {
+                    const next = String(newValue ?? '').trim();
+                    normalized = next || null;
+                } else if (key === 'returned') {
+                    if (newValue == null || String(newValue).trim() === '') {
+                        normalized = null;
+                    } else {
+                        const numeric = Number(newValue);
+                        if (!Number.isFinite(numeric)) continue;
+                        normalized = Math.max(0, Math.trunc(numeric));
+                    }
+                } else {
+                    normalized = normalizeStatus(newValue);
+                }
+
+                const previous = row[key] as unknown;
+                if (String(previous ?? '') === String(normalized ?? '')) continue;
+
+                setRows((prev) => prev.map((item) => (item.id === row.id ? { ...item, [key]: normalized } : item)));
+
+                const { error } = await supabase
+                    .from('ila_avery_note_items')
+                    .update({ [key]: normalized })
+                    .eq('id', row.id);
+
+                if (error) {
+                    setRows((prev) => prev.map((item) => (item.id === row.id ? { ...item, [key]: previous } : item)));
+                    setFetchError(error.message);
+                } else if (oldValue !== newValue) {
+                    setFetchError(null);
+                }
+            }
+        },
+        [pagedRows]
     );
 
     const hotColumns = React.useMemo<Handsontable.ColumnSettings[]>(
@@ -904,23 +1003,50 @@ export default function AveryNotesPage() {
             COLUMNS.map((col) => {
                 switch (col.key) {
                     case 'seq':
-                    case 'returned':
                         return { data: col.key, type: 'numeric', readOnly: true };
+                    case 'returned':
+                        return { data: col.key, type: 'numeric', readOnly: false, allowInvalid: false };
                     case 'print_qty':
                         return { data: col.key, readOnly: true, renderer: printQtyRenderer };
                     case 'created_at':
                         return { data: col.key, readOnly: true, renderer: dateRenderer };
                     case 'dept_id':
-                        return { data: col.key, readOnly: true, renderer: deptRenderer };
+                        return {
+                            data: col.key,
+                            type: 'dropdown',
+                            source: departments.map((d) => d.id),
+                            strict: true,
+                            allowInvalid: false,
+                            readOnly: false,
+                            renderer: deptRenderer,
+                        };
                     case 'input_id':
-                        return { data: col.key, readOnly: true, renderer: inputRenderer };
+                        return {
+                            data: col.key,
+                            type: 'dropdown',
+                            source: inputTypes.map((t) => t.id),
+                            strict: true,
+                            allowInvalid: false,
+                            readOnly: false,
+                            renderer: inputRenderer,
+                        };
                     case 'done':
-                        return { data: col.key, readOnly: true, renderer: doneRenderer };
+                        return {
+                            data: col.key,
+                            type: 'dropdown',
+                            source: STATUS_VALUES,
+                            strict: true,
+                            allowInvalid: false,
+                            readOnly: false,
+                            renderer: doneRenderer,
+                        };
+                    case 'remark':
+                        return { data: col.key, readOnly: false };
                     default:
                         return { data: col.key, readOnly: true };
                 }
             }),
-        [printQtyRenderer, dateRenderer, deptRenderer, inputRenderer, doneRenderer]
+        [printQtyRenderer, dateRenderer, deptRenderer, inputRenderer, doneRenderer, departments, inputTypes]
     );
 
     const hiddenColumnIndexes = React.useMemo(
@@ -1151,6 +1277,7 @@ export default function AveryNotesPage() {
                                         >
                                             <MenuItem value="all">All Items</MenuItem>
                                             <MenuItem value="done">Completed</MenuItem>
+                                            <MenuItem value="cancel">Canceled</MenuItem>
                                             <MenuItem value="pending">Pending</MenuItem>
                                         </Select>
                                     </FormControl>
@@ -1322,8 +1449,12 @@ export default function AveryNotesPage() {
                                         manualColumnResize={true}
                                         stretchH="all"
                                         height={620}
-                                        readOnly={true}
+                                        readOnly={false}
                                         readOnlyCellClassName=""
+                                        afterChange={(changes, source) => {
+                                            if (!changes || source === 'loadData') return;
+                                            void handleCellChanges(changes as [number, string | number, unknown, unknown][]);
+                                        }}
                                         afterGetColHeader={(col, th) => {
                                             if (col === -1) {
                                                 th.textContent = '#';
