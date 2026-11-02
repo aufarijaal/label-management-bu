@@ -22,6 +22,7 @@ import NoteAltIcon from '@mui/icons-material/NoteAlt';
 import SettingsIcon from '@mui/icons-material/Settings';
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
 import GroupIcon from '@mui/icons-material/Group';
+import Inventory2Icon from '@mui/icons-material/Inventory2';
 import Brightness4Icon from '@mui/icons-material/Brightness4';
 import Brightness7Icon from '@mui/icons-material/Brightness7';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
@@ -35,6 +36,7 @@ const DRAWER_WIDTH_COLLAPSED = 64;
 const navItems = [
     { label: 'Overview', icon: <DashboardIcon />, href: '/dashboard' },
     { label: 'ILA Input History', icon: <NoteAltIcon />, href: '/ila-input-history' },
+    { label: 'Order Data', icon: <Inventory2Icon />, href: '/order-data' },
     { label: 'Departments', icon: <GroupIcon />, href: '/departments' },
     { label: 'Input Types', icon: <SettingsIcon />, href: '/input-types' },
 ];

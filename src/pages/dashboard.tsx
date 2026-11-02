@@ -1,5 +1,6 @@
 import * as React from 'react';
 import Head from 'next/head';
+import { useRouter } from 'next/router';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Card from '@mui/material/Card';
@@ -18,6 +19,7 @@ import Checkbox from '@mui/material/Checkbox';
 import FormControl from '@mui/material/FormControl';
 import InputLabel from '@mui/material/InputLabel';
 import Typography from '@mui/material/Typography';
+import Inventory2Icon from '@mui/icons-material/Inventory2';
 import {
     BarChart,
     Bar,
@@ -59,6 +61,7 @@ interface ChartRow {
 }
 
 export default function DashboardPage() {
+    const router = useRouter();
     const { user } = useAuth();
     const displayName = user?.user_metadata?.full_name ?? user?.email ?? 'User';
 
@@ -211,6 +214,14 @@ export default function DashboardPage() {
                             Welcome back, {displayName.split(' ')[0]}! Here&apos;s what&apos;s happening.
                         </Typography>
                     </Box>
+                    <Button
+                        variant="contained"
+                        startIcon={<Inventory2Icon />}
+                        onClick={() => router.push('/order-data')}
+                        sx={{ textTransform: 'none' }}
+                    >
+                        Order Data
+                    </Button>
                 </Box>
 
                 {/* Print Qty by Department chart */}
