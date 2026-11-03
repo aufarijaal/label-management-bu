@@ -117,13 +117,13 @@ const EMPTY_FORM: FormState = {
     changes: '',
 };
 
-const SIZE_KEYS: Array<keyof FormState> = [
+const SIZE_KEYS = [
     'size_1', 'size_1t', 'size_2', 'size_2t', 'size_3', 'size_3t', 'size_4', 'size_4t', 'size_5', 'size_5t', 'size_6', 'size_6t',
     'size_7', 'size_7t', 'size_8', 'size_8t', 'size_9', 'size_9t', 'size_10', 'size_10t', 'size_11', 'size_11t', 'size_12', 'size_12t',
     'size_13', 'size_13t'
-];
+] as const;
 
-const TEXT_FIELDS: Array<keyof FormState> = [
+const TEXT_FIELDS = [
     'fty_sap',
     'gtn',
     'model_number',
@@ -133,7 +133,7 @@ const TEXT_FIELDS: Array<keyof FormState> = [
     'old_gtn',
     'old_sap',
     'changes'
-];
+] as const;
 
 function toNullableString(value: string): string | null {
     const trimmed = value.trim();
