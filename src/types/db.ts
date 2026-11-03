@@ -28,6 +28,7 @@ export type AveryNoteItem = {
 
 export type OrderData = {
     id: number;
+    cancel_status: boolean;
     fty_sap: string | null;
     gtn: string | null;
     release_date: string | null;

@@ -12,34 +12,163 @@ import DialogActions from '@mui/material/DialogActions';
 import DialogContent from '@mui/material/DialogContent';
 import DialogContentText from '@mui/material/DialogContentText';
 import DialogTitle from '@mui/material/DialogTitle';
+import Divider from '@mui/material/Divider';
+import FormControl from '@mui/material/FormControl';
+import FormControlLabel from '@mui/material/FormControlLabel';
 import IconButton from '@mui/material/IconButton';
 import InputAdornment from '@mui/material/InputAdornment';
-import Paper from '@mui/material/Paper';
+import InputLabel from '@mui/material/InputLabel';
+import Menu from '@mui/material/Menu';
+import MenuItem from '@mui/material/MenuItem';
 import Snackbar from '@mui/material/Snackbar';
-import Table from '@mui/material/Table';
-import TableBody from '@mui/material/TableBody';
-import TableCell from '@mui/material/TableCell';
-import TableContainer from '@mui/material/TableContainer';
-import TableHead from '@mui/material/TableHead';
-import TableRow from '@mui/material/TableRow';
+import Select, { type SelectChangeEvent } from '@mui/material/Select';
 import TextField from '@mui/material/TextField';
 import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
+import Checkbox from '@mui/material/Checkbox';
 import AddIcon from '@mui/icons-material/Add';
+import ArrowDropDownIcon from '@mui/icons-material/ArrowDropDown';
 import ClearIcon from '@mui/icons-material/Clear';
 import DeleteIcon from '@mui/icons-material/Delete';
 import EditIcon from '@mui/icons-material/Edit';
 import Inventory2Icon from '@mui/icons-material/Inventory2';
 import SearchIcon from '@mui/icons-material/Search';
+import UploadFileIcon from '@mui/icons-material/UploadFile';
 import Grid from '@mui/material/Grid';
+import * as XLSX from 'xlsx';
 import { useAuth } from '../context/AuthContext';
+import { useColorMode } from '../context/ColorModeContext';
 import { supabase } from '../lib/supabaseClient';
 import AppLayout from '../components/AppLayout';
 import type { OrderData } from '../types';
+import { HotTable } from '@handsontable/react-wrapper';
+import { registerAllModules } from 'handsontable/registry';
+import type Handsontable from 'handsontable';
+import 'handsontable/styles/handsontable.min.css';
+import 'handsontable/styles/ht-theme-main.min.css';
+import { registerTheme } from 'handsontable/themes';
+import tokens_main from 'handsontable/themes/static/variables/tokens/main';
+import colors_material from 'handsontable/themes/static/variables/colors/material';
+import icons_main from 'handsontable/themes/static/variables/icons/main';
+
+registerAllModules();
+
+const HT_ACCENT_GREEN = '#188038';
+
+const MUIThemeForHTTableDark = registerTheme('custom-theme-dark', {
+    tokens: tokens_main,
+    colors: colors_material,
+    icons: icons_main,
+    density: 'compact',
+    colorScheme: 'dark',
+}).params({
+    colors: {
+        primary: {
+            '100': '#e3f2fdff',
+            '200': '#bbdefbff',
+            '300': '#90caf9ff',
+            '400': '#42a5f5ff',
+            '500': '#1976d2ff',
+            '600': '#1565c0ff'
+        },
+        palette: {
+            '50': '#f5f5f5ff',
+            '100': '#eeeeee',
+            '200': '#e0e0e0ff',
+            '300': '#bdbdbdff',
+            '400': '#9e9e9eff',
+            '500': '#757575ff',
+            '600': '#616161ff',
+            '700': '#424242ff',
+            '800': '#303030ff',
+            '900': '#212121ff',
+            '950': '#121212ff'
+        },
+        white: '#ffffffff',
+        black: '#000000ff'
+    },
+    tokens: {
+        fontFamily: 'Google Sans',
+        fontSize: '14px',
+        fontWeight: '400',
+        backgroundColor: '#121212ff',
+        backgroundSecondaryColor: '#121212ff',
+        foregroundColor: '#ffffffff',
+        foregroundSecondaryColor: '#ffffffcc',
+        borderColor: '#ffffff1f',
+        accentColor: HT_ACCENT_GREEN,
+        shadowColor: '#00000080',
+        headerBackgroundColor: '#121212ff',
+        headerForegroundColor: '#ffffffde',
+        headerFontWeight: '500',
+        headerHighlightedBackgroundColor: '#2c2c2cff',
+        headerHighlightedForegroundColor: HT_ACCENT_GREEN,
+        cellHorizontalBorderColor: '#ffffff1f',
+        cellVerticalBorderColor: '#ffffff1f',
+        cellSelectionBorderColor: HT_ACCENT_GREEN,
+        cellSelectionBackgroundColor: '#18803833',
+    }
+});
+
+const MUIThemeForHTTableLight = registerTheme('custom-theme-light', {
+    tokens: tokens_main,
+    colors: colors_material,
+    icons: icons_main,
+    density: 'compact',
+    colorScheme: 'light',
+}).params({
+    colors: {
+        primary: {
+            '100': '#e8f5e9',
+            '200': '#c8e6c9',
+            '300': '#a5d6a7',
+            '400': '#81c784',
+            '500': HT_ACCENT_GREEN,
+            '600': '#0d652d'
+        },
+        palette: {
+            '50': '#fafafa',
+            '100': '#f5f5f5',
+            '200': '#eeeeee',
+            '300': '#e0e0e0',
+            '400': '#bdbdbd',
+            '500': '#9e9e9e',
+            '600': '#757575',
+            '700': '#616161',
+            '800': '#424242',
+            '900': '#212121',
+            '950': '#111111'
+        },
+        white: '#ffffffff',
+        black: '#000000ff'
+    },
+    tokens: {
+        fontFamily: 'Google Sans',
+        fontSize: '14px',
+        fontWeight: '400',
+        backgroundColor: '#ffffffff',
+        backgroundSecondaryColor: '#f8faf8ff',
+        foregroundColor: '#1f1f1f',
+        foregroundSecondaryColor: '#202124',
+        borderColor: '#dadce0',
+        accentColor: HT_ACCENT_GREEN,
+        shadowColor: '#0000001f',
+        headerBackgroundColor: '#f1f8f4',
+        headerForegroundColor: '#1f1f1f',
+        headerFontWeight: '500',
+        headerHighlightedBackgroundColor: '#d9efe0',
+        headerHighlightedForegroundColor: HT_ACCENT_GREEN,
+        cellHorizontalBorderColor: '#e5e7eb',
+        cellVerticalBorderColor: '#e5e7eb',
+        cellSelectionBorderColor: HT_ACCENT_GREEN,
+        cellSelectionBackgroundColor: '#18803826',
+    }
+});
 
 const TABLE_NAME = 'order_data';
 
 type FormState = {
+    cancel_status: boolean;
     fty_sap: string;
     gtn: string;
     release_date: string;
@@ -79,6 +208,7 @@ type FormState = {
 };
 
 const EMPTY_FORM: FormState = {
+    cancel_status: false,
     fty_sap: '',
     gtn: '',
     release_date: '',
@@ -153,6 +283,8 @@ function toNullableInteger(value: string): number | null {
 function mapRowToForm(row: OrderData): FormState {
     const form: FormState = { ...EMPTY_FORM };
 
+    form.cancel_status = row.cancel_status;
+
     TEXT_FIELDS.forEach((field) => {
         form[field] = row[field] ?? '';
     });
@@ -167,7 +299,8 @@ function mapRowToForm(row: OrderData): FormState {
 }
 
 function buildPayload(form: FormState) {
-    const payload: Record<string, string | number | null> = {
+    const payload: Record<string, string | number | boolean | null> = {
+        cancel_status: form.cancel_status,
         release_date: form.release_date ? form.release_date : null,
     };
 
@@ -182,13 +315,247 @@ function buildPayload(form: FormState) {
     return payload;
 }
 
+function normalizeHeader(value: string): string {
+    return value.trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+function toStringCell(value: unknown): string {
+    if (value == null) return '';
+    return String(value).trim();
+}
+
+function toDateStringCell(value: unknown): string {
+    if (value == null || value === '') return '';
+
+    if (typeof value === 'number') {
+        const excelDate = XLSX.SSF.parse_date_code(value);
+        if (!excelDate) return '';
+        const year = String(excelDate.y).padStart(4, '0');
+        const month = String(excelDate.m).padStart(2, '0');
+        const day = String(excelDate.d).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    }
+
+    if (value instanceof Date && !Number.isNaN(value.getTime())) {
+        return value.toISOString().slice(0, 10);
+    }
+
+    const text = String(value).trim();
+    if (!text) return '';
+
+    const asDate = new Date(text);
+    if (!Number.isNaN(asDate.getTime())) {
+        return asDate.toISOString().slice(0, 10);
+    }
+
+    return text;
+}
+
+function toIntegerStringCell(value: unknown): string {
+    if (value == null || value === '') return '';
+
+    if (typeof value === 'number') {
+        if (!Number.isFinite(value) || !Number.isInteger(value)) {
+            throw new Error('Size fields must be valid integers.');
+        }
+        return String(value);
+    }
+
+    const raw = String(value).trim();
+    if (!raw) return '';
+    const normalized = raw.replace(/,/g, '');
+    const parsed = Number(normalized);
+    if (!Number.isFinite(parsed) || !Number.isInteger(parsed)) {
+        throw new Error('Size fields must be valid integers.');
+    }
+    return String(parsed);
+}
+
+function buildUploadAliasMap(): Map<string, UploadFieldKey> {
+    const aliasMap = new Map<string, UploadFieldKey>();
+
+    UPLOAD_FIELDS.forEach((field) => {
+        aliasMap.set(normalizeHeader(field), field);
+        for (const alias of UPLOAD_HEADER_ALIASES[field]) {
+            aliasMap.set(normalizeHeader(alias), field);
+        }
+    });
+
+    return aliasMap;
+}
+
+type SizeKey = (typeof SIZE_KEYS)[number];
+
+type CancelFilter = 'all' | 'cancelled' | 'active';
+
+type UploadFieldKey = Exclude<keyof FormState, 'cancel_status'>;
+
+const UPLOAD_FIELDS: UploadFieldKey[] = [
+    'fty_sap',
+    'gtn',
+    'release_date',
+    'model_number',
+    'model_name',
+    'art',
+    'destination',
+    'size_1',
+    'size_1t',
+    'size_2',
+    'size_2t',
+    'size_3',
+    'size_3t',
+    'size_4',
+    'size_4t',
+    'size_5',
+    'size_5t',
+    'size_6',
+    'size_6t',
+    'size_7',
+    'size_7t',
+    'size_8',
+    'size_8t',
+    'size_9',
+    'size_9t',
+    'size_10',
+    'size_10t',
+    'size_11',
+    'size_11t',
+    'size_12',
+    'size_12t',
+    'size_13',
+    'size_13t',
+    'old_gtn',
+    'old_sap',
+    'changes',
+];
+
+const UPLOAD_HEADER_ALIASES: Record<UploadFieldKey, string[]> = {
+    fty_sap: ['FTY SAP#', 'fty_sap', 'FTY SAP'],
+    gtn: ['Order Number (GTN)', 'gtn', 'GTN'],
+    release_date: ['接单日-Released date', 'release_date', 'Released date'],
+    model_number: ['Model Number', 'model_number'],
+    model_name: ['Model Name', 'model_name'],
+    art: ['Article Number', 'art'],
+    destination: ['Ship to Country', 'destination'],
+    size_1: ['1'],
+    size_1t: ['1,5', '1t', '1.5', '1\u00bd'],
+    size_2: ['2'],
+    size_2t: ['2,5', '2t', '2.5', '2\u00bd'],
+    size_3: ['3'],
+    size_3t: ['3,5', '3t', '3.5', '3\u00bd'],
+    size_4: ['4'],
+    size_4t: ['4,5', '4t', '4.5', '4\u00bd'],
+    size_5: ['5'],
+    size_5t: ['5,5', '5t', '5.5', '5\u00bd'],
+    size_6: ['6'],
+    size_6t: ['6,5', '6t', '6.5', '6\u00bd'],
+    size_7: ['7'],
+    size_7t: ['7,5', '7t', '7.5', '7\u00bd'],
+    size_8: ['8'],
+    size_8t: ['8,5', '8t', '8.5', '8\u00bd'],
+    size_9: ['9'],
+    size_9t: ['9,5', '9t', '9.5', '9\u00bd'],
+    size_10: ['10'],
+    size_10t: ['10,5', '10t', '10.5', '10\u00bd'],
+    size_11: ['11'],
+    size_11t: ['11,5', '11t', '11.5', '11\u00bd'],
+    size_12: ['12'],
+    size_12t: ['12,5', '12t', '12.5', '12\u00bd'],
+    size_13: ['13'],
+    size_13t: ['13,5', '13t', '13.5', '13\u00bd'],
+    old_gtn: ['Reallocation Indicator', 'old_gtn'],
+    old_sap: ['Old FTY SAP#', 'old_sap'],
+    changes: ['Remark update', 'changes'],
+};
+
+type BulkUploadPreviewItem = {
+    sourceRow: number;
+    form: FormState;
+    duplicateReason: string | null;
+};
+
+type BulkUploadPreviewTableRow = {
+    source_row: number;
+    duplicate_reason: string;
+} & Record<UploadFieldKey, string>;
+
+type OrderTableRow = Record<SizeKey, number | null> & {
+    id: number;
+    cancel_status: string;
+    release_date: string;
+    fty_sap: string;
+    gtn: string;
+    model_number: string;
+    model_name: string;
+    art: string;
+    destination: string;
+    total_qty: number;
+    changes: string;
+};
+
+const HOT_COLUMNS: Handsontable.ColumnSettings[] = [
+    { data: 'id', type: 'numeric', readOnly: true },
+    { data: 'cancel_status', type: 'text', readOnly: true },
+    { data: 'release_date', type: 'text', readOnly: true },
+    { data: 'fty_sap', type: 'text', readOnly: true },
+    { data: 'gtn', type: 'text', readOnly: true },
+    { data: 'model_number', type: 'text', readOnly: true },
+    { data: 'model_name', type: 'text', readOnly: true },
+    { data: 'art', type: 'text', readOnly: true },
+    { data: 'destination', type: 'text', readOnly: true },
+    ...SIZE_KEYS.map((field) => ({ data: field, type: 'numeric', readOnly: true })),
+    { data: 'total_qty', type: 'numeric', readOnly: true },
+    { data: 'changes', type: 'text', readOnly: true },
+];
+
+const HOT_HEADERS = [
+    'ID',
+    'Cancel Status',
+    'Release Date',
+    'FTY SAP',
+    'GTN',
+    'Model Number',
+    'Model Name',
+    'ART',
+    'Destination',
+    ...SIZE_KEYS.map((field) => field.replace('size_', 'SIZE ').toUpperCase()),
+    'Total Qty',
+    'Changes',
+];
+
+const BULK_PREVIEW_COLUMNS: Handsontable.ColumnSettings[] = [
+    { data: 'source_row', type: 'numeric', readOnly: true },
+    { data: 'duplicate_reason', type: 'text', readOnly: true },
+    ...UPLOAD_FIELDS.map((field) => ({ data: field, type: 'text', readOnly: true })),
+];
+
+const BULK_PREVIEW_HEADERS = [
+    'Row',
+    'Duplicate Check',
+    ...UPLOAD_FIELDS.map((field) => field.toUpperCase()),
+];
+
 export default function OrderDataPage() {
     const { user } = useAuth();
+    const { mode } = useColorMode();
 
     const [rows, setRows] = React.useState<OrderData[]>([]);
+    const [selectedRowId, setSelectedRowId] = React.useState<number | null>(null);
     const [fetching, setFetching] = React.useState(true);
     const [fetchError, setFetchError] = React.useState<string | null>(null);
     const [search, setSearch] = React.useState('');
+    const [cancelFilter, setCancelFilter] = React.useState<CancelFilter>('all');
+
+    const [quickActionsAnchorEl, setQuickActionsAnchorEl] = React.useState<null | HTMLElement>(null);
+    const quickActionsOpen = Boolean(quickActionsAnchorEl);
+
+    const [bulkUploadOpen, setBulkUploadOpen] = React.useState(false);
+    const [bulkUploadPreview, setBulkUploadPreview] = React.useState<BulkUploadPreviewItem[]>([]);
+    const [bulkUploadFileName, setBulkUploadFileName] = React.useState('');
+    const [bulkUploadError, setBulkUploadError] = React.useState<string | null>(null);
+    const [bulkUploadBusy, setBulkUploadBusy] = React.useState(false);
+    const [bulkUploadConfirming, setBulkUploadConfirming] = React.useState(false);
+    const bulkUploadInputRef = React.useRef<HTMLInputElement>(null);
 
     const [dialogOpen, setDialogOpen] = React.useState(false);
     const [dialogMode, setDialogMode] = React.useState<'add' | 'edit'>('add');
@@ -230,12 +597,19 @@ export default function OrderDataPage() {
     }, [user, fetchRows]);
 
     const filteredRows = React.useMemo(() => {
-        const q = search.trim().toLowerCase();
-        if (!q) return rows;
+        const cancelStatusFilteredRows = rows.filter((row) => {
+            if (cancelFilter === 'all') return true;
+            if (cancelFilter === 'cancelled') return row.cancel_status;
+            return !row.cancel_status;
+        });
 
-        return rows.filter((row) => {
+        const q = search.trim().toLowerCase();
+        if (!q) return cancelStatusFilteredRows;
+
+        return cancelStatusFilteredRows.filter((row) => {
             const pool = [
                 row.id,
+                row.cancel_status ? 'cancelled' : 'active',
                 row.fty_sap,
                 row.gtn,
                 row.model_number,
@@ -249,10 +623,267 @@ export default function OrderDataPage() {
             ];
             return pool.some((value) => String(value ?? '').toLowerCase().includes(q));
         });
-    }, [rows, search]);
+    }, [rows, search, cancelFilter]);
+
+    const tableData = React.useMemo<OrderTableRow[]>(() => {
+        return filteredRows.map((row) => ({
+            ...Object.fromEntries(
+                SIZE_KEYS.map((field) => [field, row[field]]),
+            ) as Record<SizeKey, number | null>,
+            id: row.id,
+            cancel_status: row.cancel_status ? 'Cancelled' : 'Active',
+            release_date: row.release_date ?? '-',
+            fty_sap: row.fty_sap ?? '-',
+            gtn: row.gtn ?? '-',
+            model_number: row.model_number ?? '-',
+            model_name: row.model_name ?? '-',
+            art: row.art ?? '-',
+            destination: row.destination ?? '-',
+            total_qty: SIZE_KEYS.reduce((sum, field) => sum + (row[field] ?? 0), 0),
+            changes: row.changes ?? '-',
+        }));
+    }, [filteredRows]);
+
+    React.useEffect(() => {
+        setSelectedRowId((prev) => {
+            if (prev == null) return null;
+            return filteredRows.some((row) => row.id === prev) ? prev : null;
+        });
+    }, [filteredRows]);
+
+    const selectedRow = React.useMemo(
+        () => filteredRows.find((row) => row.id === selectedRowId) ?? null,
+        [filteredRows, selectedRowId],
+    );
+
+    const handleTableSelection = React.useCallback(
+        (visualRowIndex: number) => {
+            const row = filteredRows[visualRowIndex];
+            setSelectedRowId(row ? row.id : null);
+        },
+        [filteredRows],
+    );
+
+    const htTheme = mode === 'dark' ? MUIThemeForHTTableDark : MUIThemeForHTTableLight;
+
+    const bulkPreviewTableData = React.useMemo<BulkUploadPreviewTableRow[]>(() => {
+        return bulkUploadPreview.map((item) => {
+            const row: BulkUploadPreviewTableRow = {
+                source_row: item.sourceRow,
+                duplicate_reason: item.duplicateReason ?? '',
+                ...Object.fromEntries(
+                    UPLOAD_FIELDS.map((field) => [field, item.form[field]]),
+                ) as Record<UploadFieldKey, string>,
+            };
+            return row;
+        });
+    }, [bulkUploadPreview]);
+
+    const duplicateCount = React.useMemo(
+        () => bulkUploadPreview.filter((item) => Boolean(item.duplicateReason)).length,
+        [bulkUploadPreview],
+    );
+
+    const insertableCount = bulkUploadPreview.length - duplicateCount;
 
     const handleFieldChange = (field: keyof FormState) => (event: React.ChangeEvent<HTMLInputElement>) => {
         setForm((prev) => ({ ...prev, [field]: event.target.value }));
+    };
+
+    const handleCancelStatusChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+        setForm((prev) => ({ ...prev, cancel_status: event.target.checked }));
+    };
+
+    const handleCancelFilterChange = (event: SelectChangeEvent<CancelFilter>) => {
+        setCancelFilter(event.target.value as CancelFilter);
+    };
+
+    const handleOpenQuickActions = (event: React.MouseEvent<HTMLButtonElement>) => {
+        setQuickActionsAnchorEl(event.currentTarget);
+    };
+
+    const handleCloseQuickActions = () => {
+        setQuickActionsAnchorEl(null);
+    };
+
+    const handleOpenBulkUpload = () => {
+        handleCloseQuickActions();
+        setBulkUploadOpen(true);
+        setBulkUploadPreview([]);
+        setBulkUploadFileName('');
+        setBulkUploadError(null);
+    };
+
+    const handleCloseBulkUpload = () => {
+        if (bulkUploadBusy || bulkUploadConfirming) return;
+        setBulkUploadOpen(false);
+    };
+
+    const handleUploadFileClick = () => {
+        bulkUploadInputRef.current?.click();
+    };
+
+    const parseUploadFile = React.useCallback(async (file: File) => {
+        setBulkUploadBusy(true);
+        setBulkUploadError(null);
+        setBulkUploadPreview([]);
+        setBulkUploadFileName(file.name);
+
+        try {
+            const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array' });
+            const firstSheetName = workbook.SheetNames[0];
+            if (!firstSheetName) {
+                throw new Error('The workbook is empty.');
+            }
+
+            const worksheet = workbook.Sheets[firstSheetName];
+            const aliasMap = buildUploadAliasMap();
+            const rawRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(worksheet, {
+                defval: '',
+                raw: true,
+            });
+
+            if (rawRows.length === 0) {
+                throw new Error('No data rows were found in the first worksheet.');
+            }
+
+            const parsedRows: BulkUploadPreviewItem[] = rawRows.map((rawRow, index) => {
+                const normalizedRow: Partial<Record<UploadFieldKey, unknown>> = {};
+
+                Object.entries(rawRow).forEach(([header, value]) => {
+                    const field = aliasMap.get(normalizeHeader(String(header)));
+                    if (field) {
+                        normalizedRow[field] = value;
+                    }
+                });
+
+                const form: FormState = { ...EMPTY_FORM };
+                form.cancel_status = false;
+
+                UPLOAD_FIELDS.forEach((field) => {
+                    const value = normalizedRow[field];
+                    if (field === 'release_date') {
+                        form[field] = toDateStringCell(value);
+                    } else if (SIZE_KEYS.includes(field as SizeKey)) {
+                        form[field] = toIntegerStringCell(value);
+                    } else {
+                        form[field] = toStringCell(value);
+                    }
+                });
+
+                return {
+                    sourceRow: index + 2,
+                    form,
+                    duplicateReason: null,
+                };
+            });
+
+            const fileDupCounter = new Map<string, number>();
+            parsedRows.forEach((item) => {
+                const key = item.form.fty_sap.trim().toLowerCase();
+                if (!key) return;
+                fileDupCounter.set(key, (fileDupCounter.get(key) ?? 0) + 1);
+            });
+
+            const uploadFtySaps = Array.from(new Set(
+                parsedRows
+                    .map((item) => item.form.fty_sap.trim())
+                    .filter((value) => value.length > 0),
+            ));
+
+            const dbDuplicateSet = new Set<string>();
+            if (uploadFtySaps.length > 0) {
+                const { data, error } = await supabase
+                    .from(TABLE_NAME)
+                    .select('fty_sap')
+                    .in('fty_sap', uploadFtySaps);
+
+                if (error) {
+                    throw new Error(`Failed duplicate check: ${error.message}`);
+                }
+
+                for (const row of data ?? []) {
+                    const value = String((row as { fty_sap: string | null }).fty_sap ?? '').trim().toLowerCase();
+                    if (value) dbDuplicateSet.add(value);
+                }
+            }
+
+            const preview = parsedRows.map((item) => {
+                const key = item.form.fty_sap.trim().toLowerCase();
+                const reasons: string[] = [];
+                if (!key) {
+                    reasons.push('Missing FTY SAP');
+                } else {
+                    if ((fileDupCounter.get(key) ?? 0) > 1) {
+                        reasons.push('Duplicate in upload file');
+                    }
+                    if (dbDuplicateSet.has(key)) {
+                        reasons.push('Already exists in database');
+                    }
+                }
+
+                return {
+                    ...item,
+                    duplicateReason: reasons.length ? reasons.join(' | ') : null,
+                };
+            });
+
+            setBulkUploadPreview(preview);
+        } catch (error) {
+            setBulkUploadError(error instanceof Error ? error.message : 'Failed to parse upload file.');
+        } finally {
+            setBulkUploadBusy(false);
+        }
+    }, []);
+
+    const handleFileInputChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0];
+        if (!file) return;
+
+        const isAllowed = /\.(xlsx|xls|ods|csv)$/i.test(file.name);
+        if (!isAllowed) {
+            setBulkUploadError('Please upload an Excel/CSV file (.xlsx, .xls, .ods, .csv).');
+            event.target.value = '';
+            return;
+        }
+
+        await parseUploadFile(file);
+        event.target.value = '';
+    };
+
+    const handleConfirmBulkUpload = async () => {
+        const readyRows = bulkUploadPreview.filter((item) => !item.duplicateReason);
+        if (readyRows.length === 0) {
+            setBulkUploadError('No valid rows to insert. Resolve duplicates or upload another file.');
+            return;
+        }
+
+        setBulkUploadConfirming(true);
+        setBulkUploadError(null);
+
+        try {
+            const payloads = readyRows.map((item) => buildPayload(item.form));
+
+            for (let index = 0; index < payloads.length; index += 200) {
+                const chunk = payloads.slice(index, index + 200);
+                const { error } = await supabase.from(TABLE_NAME).insert(chunk);
+                if (error) {
+                    throw new Error(error.message);
+                }
+            }
+
+            setBulkUploadOpen(false);
+            setSnackbar({
+                open: true,
+                message: `Bulk upload completed. Inserted ${readyRows.length} row(s), skipped ${duplicateCount} duplicate row(s).`,
+                severity: 'success',
+            });
+            fetchRows();
+        } catch (error) {
+            setBulkUploadError(error instanceof Error ? error.message : 'Bulk insert failed.');
+        } finally {
+            setBulkUploadConfirming(false);
+        }
     };
 
     const openAddDialog = () => {
@@ -280,7 +911,7 @@ export default function OrderDataPage() {
         setSaving(true);
         setFormError(null);
 
-        let payload: Record<string, string | number | null>;
+        let payload: Record<string, string | number | boolean | null>;
         try {
             payload = buildPayload(form);
         } catch (error) {
@@ -368,7 +999,7 @@ export default function OrderDataPage() {
                         <Box sx={{ mb: 2, display: 'flex', flexWrap: 'wrap', gap: 1.5, alignItems: 'center' }}>
                             <TextField
                                 size="small"
-                                placeholder="Search by SAP, GTN, model, ART, destination..."
+                                placeholder="Search by SAP, GTN, model, ART, destination, status..."
                                 value={search}
                                 onChange={(event) => { setSearch(event.target.value); }}
                                 InputProps={{
@@ -387,15 +1018,71 @@ export default function OrderDataPage() {
                                 }}
                                 sx={{ width: { xs: '100%', sm: 420 } }}
                             />
+                            <FormControl size="small" sx={{ minWidth: 180 }}>
+                                <InputLabel id="cancel-status-filter-label">Cancel Status</InputLabel>
+                                <Select
+                                    labelId="cancel-status-filter-label"
+                                    value={cancelFilter}
+                                    label="Cancel Status"
+                                    onChange={handleCancelFilterChange}
+                                >
+                                    <MenuItem value="all">All</MenuItem>
+                                    <MenuItem value="active">Active Only</MenuItem>
+                                    <MenuItem value="cancelled">Cancelled Only</MenuItem>
+                                </Select>
+                            </FormControl>
+                            <Button
+                                variant="outlined"
+                                endIcon={<ArrowDropDownIcon />}
+                                onClick={handleOpenQuickActions}
+                            >
+                                Quick Actions
+                            </Button>
                             <Button
                                 variant="contained"
                                 startIcon={<AddIcon />}
                                 onClick={openAddDialog}
-                                sx={{ ml: 'auto' }}
+                                sx={{ ml: { xs: 0, md: 'auto' } }}
                             >
                                 Add Order Row
                             </Button>
+                            <Button
+                                variant="outlined"
+                                startIcon={<EditIcon />}
+                                onClick={() => { if (selectedRow) openEditDialog(selectedRow); }}
+                                disabled={!selectedRow}
+                            >
+                                Edit Selected
+                            </Button>
+                            <Button
+                                variant="outlined"
+                                color="error"
+                                startIcon={<DeleteIcon />}
+                                onClick={() => { if (selectedRow) setDeleteTarget(selectedRow); }}
+                                disabled={!selectedRow}
+                            >
+                                Delete Selected
+                            </Button>
                         </Box>
+
+                        <Menu
+                            anchorEl={quickActionsAnchorEl}
+                            open={quickActionsOpen}
+                            onClose={handleCloseQuickActions}
+                        >
+                            <MenuItem onClick={handleOpenBulkUpload}>
+                                <UploadFileIcon fontSize="small" sx={{ mr: 1 }} />
+                                Bulk Upload
+                            </MenuItem>
+                        </Menu>
+
+                        <input
+                            ref={bulkUploadInputRef}
+                            type="file"
+                            accept=".xlsx,.xls,.ods,.csv"
+                            style={{ display: 'none' }}
+                            onChange={handleFileInputChange}
+                        />
 
                         {fetchError && (
                             <Typography color="error" variant="body2" sx={{ mb: 2 }}>
@@ -403,69 +1090,45 @@ export default function OrderDataPage() {
                             </Typography>
                         )}
 
-                        <TableContainer component={Paper} elevation={0} variant="outlined" sx={{ borderRadius: 2 }}>
-                            <Table size="small">
-                                <TableHead>
-                                    <TableRow>
-                                        <TableCell sx={{ fontWeight: 700, whiteSpace: 'nowrap' }}>ID</TableCell>
-                                        <TableCell sx={{ fontWeight: 700, whiteSpace: 'nowrap' }}>Release Date</TableCell>
-                                        <TableCell sx={{ fontWeight: 700, whiteSpace: 'nowrap' }}>FTY SAP</TableCell>
-                                        <TableCell sx={{ fontWeight: 700, whiteSpace: 'nowrap' }}>GTN</TableCell>
-                                        <TableCell sx={{ fontWeight: 700, whiteSpace: 'nowrap' }}>Model Number</TableCell>
-                                        <TableCell sx={{ fontWeight: 700, whiteSpace: 'nowrap' }}>Model Name</TableCell>
-                                        <TableCell sx={{ fontWeight: 700, whiteSpace: 'nowrap' }}>ART</TableCell>
-                                        <TableCell sx={{ fontWeight: 700, whiteSpace: 'nowrap' }}>Destination</TableCell>
-                                        <TableCell sx={{ fontWeight: 700, whiteSpace: 'nowrap' }}>Changes</TableCell>
-                                        <TableCell sx={{ fontWeight: 700, whiteSpace: 'nowrap' }} align="right">
-                                            Actions
-                                        </TableCell>
-                                    </TableRow>
-                                </TableHead>
-                                <TableBody>
-                                    {fetching ? (
-                                        <TableRow>
-                                            <TableCell colSpan={10} align="center" sx={{ py: 6 }}>
-                                                <CircularProgress size={32} />
-                                            </TableCell>
-                                        </TableRow>
-                                    ) : filteredRows.length === 0 ? (
-                                        <TableRow>
-                                            <TableCell colSpan={10} align="center" sx={{ py: 6 }}>
-                                                <Typography variant="body2" color="text.secondary">
-                                                    {search ? 'No records match your search.' : 'No order data records found.'}
-                                                </Typography>
-                                            </TableCell>
-                                        </TableRow>
-                                    ) : (
-                                        filteredRows.map((row) => (
-                                            <TableRow key={row.id} hover sx={{ '&:last-child td': { borderBottom: 0 } }}>
-                                                <TableCell>{row.id}</TableCell>
-                                                <TableCell>{row.release_date ?? '-'}</TableCell>
-                                                <TableCell>{row.fty_sap ?? '-'}</TableCell>
-                                                <TableCell>{row.gtn ?? '-'}</TableCell>
-                                                <TableCell>{row.model_number ?? '-'}</TableCell>
-                                                <TableCell>{row.model_name ?? '-'}</TableCell>
-                                                <TableCell>{row.art ?? '-'}</TableCell>
-                                                <TableCell>{row.destination ?? '-'}</TableCell>
-                                                <TableCell>{row.changes ?? '-'}</TableCell>
-                                                <TableCell align="right">
-                                                    <Tooltip title="Edit">
-                                                        <IconButton size="small" onClick={() => openEditDialog(row)}>
-                                                            <EditIcon fontSize="small" />
-                                                        </IconButton>
-                                                    </Tooltip>
-                                                    <Tooltip title="Delete">
-                                                        <IconButton size="small" color="error" onClick={() => setDeleteTarget(row)}>
-                                                            <DeleteIcon fontSize="small" />
-                                                        </IconButton>
-                                                    </Tooltip>
-                                                </TableCell>
-                                            </TableRow>
-                                        ))
-                                    )}
-                                </TableBody>
-                            </Table>
-                        </TableContainer>
+                        {selectedRow ? (
+                            <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+                                Selected row: #{selectedRow.id}
+                            </Typography>
+                        ) : null}
+
+                        {fetching ? (
+                            <Box sx={{ display: 'grid', placeItems: 'center', py: 8, border: '1px solid', borderColor: 'divider', borderRadius: 2 }}>
+                                <CircularProgress size={32} />
+                            </Box>
+                        ) : filteredRows.length === 0 ? (
+                            <Box sx={{ display: 'grid', placeItems: 'center', py: 8, border: '1px solid', borderColor: 'divider', borderRadius: 2 }}>
+                                <Typography variant="body2" color="text.secondary">
+                                    {search ? 'No records match your search.' : 'No order data records found.'}
+                                </Typography>
+                            </Box>
+                        ) : (
+                            <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 2, overflow: 'hidden' }}>
+                                <HotTable
+                                    theme={htTheme}
+                                    data={tableData}
+                                    columns={HOT_COLUMNS}
+                                    colHeaders={HOT_HEADERS}
+                                    rowHeaders
+                                    width="100%"
+                                    height={540}
+                                    stretchH="all"
+                                    manualColumnResize
+                                    columnSorting
+                                    dropdownMenu
+                                    filters
+                                    navigableHeaders
+                                    licenseKey="non-commercial-and-evaluation"
+                                    afterSelectionEnd={(row) => {
+                                        handleTableSelection(row);
+                                    }}
+                                />
+                            </Box>
+                        )}
                     </CardContent>
                 </Card>
             </Box>
@@ -474,6 +1137,12 @@ export default function OrderDataPage() {
                 <DialogTitle>{dialogMode === 'add' ? 'Add Order Data Row' : `Edit Row #${editingId}`}</DialogTitle>
                 <DialogContent dividers>
                     <Grid container spacing={2} sx={{ mt: 0 }}>
+                        <Grid item xs={12}>
+                            <FormControlLabel
+                                control={<Checkbox checked={form.cancel_status} onChange={handleCancelStatusChange} />}
+                                label="Cancel status"
+                            />
+                        </Grid>
                         <Grid item xs={12} sm={6} md={4}>
                             <TextField fullWidth label="FTY SAP" value={form.fty_sap} onChange={handleFieldChange('fty_sap')} />
                         </Grid>
@@ -538,6 +1207,76 @@ export default function OrderDataPage() {
                     <Button onClick={closeDialog} disabled={saving}>Cancel</Button>
                     <Button onClick={handleSave} variant="contained" disabled={saving}>
                         {saving ? 'Saving...' : dialogMode === 'add' ? 'Create' : 'Save Changes'}
+                    </Button>
+                </DialogActions>
+            </Dialog>
+
+            <Dialog open={bulkUploadOpen} onClose={handleCloseBulkUpload} fullWidth maxWidth="xl">
+                <DialogTitle>Bulk Upload Order Data</DialogTitle>
+                <DialogContent dividers>
+                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.5, alignItems: 'center', mb: 2 }}>
+                        <Button
+                            variant="contained"
+                            startIcon={<UploadFileIcon />}
+                            onClick={handleUploadFileClick}
+                            disabled={bulkUploadBusy || bulkUploadConfirming}
+                        >
+                            Choose File
+                        </Button>
+                        <Typography variant="body2" color="text.secondary">
+                            {bulkUploadFileName ? `Selected: ${bulkUploadFileName}` : 'Allowed: .xlsx, .xls, .ods, .csv'}
+                        </Typography>
+                    </Box>
+
+                    {bulkUploadError && (
+                        <Alert severity="error" sx={{ mb: 2 }}>
+                            {bulkUploadError}
+                        </Alert>
+                    )}
+
+                    {bulkUploadBusy ? (
+                        <Box sx={{ display: 'grid', placeItems: 'center', py: 5 }}>
+                            <CircularProgress size={28} />
+                        </Box>
+                    ) : bulkUploadPreview.length > 0 ? (
+                        <>
+                            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 2 }}>
+                                <Chip label={`${bulkUploadPreview.length} row(s) loaded`} color="default" size="small" />
+                                <Chip label={`${insertableCount} row(s) ready to insert`} color="success" size="small" />
+                                <Chip label={`${duplicateCount} duplicate/invalid row(s)`} color="warning" size="small" />
+                            </Box>
+                            <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 2, overflow: 'hidden' }}>
+                                <HotTable
+                                    theme={htTheme}
+                                    data={bulkPreviewTableData}
+                                    columns={BULK_PREVIEW_COLUMNS}
+                                    colHeaders={BULK_PREVIEW_HEADERS}
+                                    rowHeaders
+                                    width="100%"
+                                    height={450}
+                                    stretchH="all"
+                                    manualColumnResize
+                                    columnSorting
+                                    filters
+                                    dropdownMenu
+                                    licenseKey="non-commercial-and-evaluation"
+                                />
+                            </Box>
+                        </>
+                    ) : (
+                        <Alert severity="info">
+                            Upload your order data file to preview and validate duplicates by FTY SAP before insert.
+                        </Alert>
+                    )}
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={handleCloseBulkUpload} disabled={bulkUploadBusy || bulkUploadConfirming}>Close</Button>
+                    <Button
+                        variant="contained"
+                        onClick={handleConfirmBulkUpload}
+                        disabled={bulkUploadBusy || bulkUploadConfirming || bulkUploadPreview.length === 0 || insertableCount === 0}
+                    >
+                        {bulkUploadConfirming ? 'Uploading...' : `Confirm Insert (${insertableCount})`}
                     </Button>
                 </DialogActions>
             </Dialog>
