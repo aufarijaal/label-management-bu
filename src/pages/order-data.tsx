@@ -26,12 +26,11 @@ import TextField from '@mui/material/TextField';
 import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
 import Checkbox from '@mui/material/Checkbox';
-import AddIcon from '@mui/icons-material/Add';
 import ArrowDropDownIcon from '@mui/icons-material/ArrowDropDown';
 import ClearIcon from '@mui/icons-material/Clear';
-import DeleteIcon from '@mui/icons-material/Delete';
 import EditIcon from '@mui/icons-material/Edit';
 import Inventory2Icon from '@mui/icons-material/Inventory2';
+import RefreshIcon from '@mui/icons-material/Refresh';
 import SearchIcon from '@mui/icons-material/Search';
 import UploadFileIcon from '@mui/icons-material/UploadFile';
 import Grid from '@mui/material/Grid';
@@ -166,6 +165,7 @@ const MUIThemeForHTTableLight = registerTheme('custom-theme-light', {
 });
 
 const TABLE_NAME = 'order_data';
+const ORDER_DATA_FETCH_MAX_ROWS = 10_000;
 
 type FormState = {
     cancel_status: boolean;
@@ -371,6 +371,15 @@ function toIntegerStringCell(value: unknown): string {
     return String(parsed);
 }
 
+function parseFtySapList(value: string): string[] {
+    return Array.from(new Set(
+        value
+            .split(/[\n,;\t]+/)
+            .map((item) => item.trim())
+            .filter((item) => item.length > 0),
+    ));
+}
+
 function buildUploadAliasMap(): Map<string, UploadFieldKey> {
     const aliasMap = new Map<string, UploadFieldKey>();
 
@@ -388,7 +397,64 @@ type SizeKey = (typeof SIZE_KEYS)[number];
 
 type CancelFilter = 'all' | 'cancelled' | 'active';
 
+type BulkChangeField = 'gtn' | 'fty_sap' | 'destination';
+
+type BulkChangeRow = {
+    ftySap: string;
+    newValue: string;
+};
+
 type UploadFieldKey = Exclude<keyof FormState, 'cancel_status'>;
+
+const EMPTY_BULK_CHANGE_ROW: BulkChangeRow = { ftySap: '', newValue: '' };
+
+function hasBulkChangeRowValue(row: BulkChangeRow): boolean {
+    return row.ftySap.trim().length > 0 || row.newValue.trim().length > 0;
+}
+
+function normalizeBulkChangeRows(rows: BulkChangeRow[]): BulkChangeRow[] {
+    const nextRows = rows.length > 0 ? rows.map((row) => ({ ...row })) : [{ ...EMPTY_BULK_CHANGE_ROW }];
+
+    while (nextRows.length > 1 && !hasBulkChangeRowValue(nextRows[nextRows.length - 1])) {
+        nextRows.pop();
+    }
+
+    if (hasBulkChangeRowValue(nextRows[nextRows.length - 1])) {
+        nextRows.push({ ...EMPTY_BULK_CHANGE_ROW });
+    }
+
+    return nextRows;
+}
+
+function parseBulkChangeRows(rows: BulkChangeRow[]): Array<{ ftySap: string; newValue: string }> {
+    const updates: Array<{ ftySap: string; newValue: string }> = [];
+
+    rows.forEach((row, index) => {
+        const ftySap = row.ftySap.trim();
+        const newValue = row.newValue.trim();
+
+        if (!ftySap && !newValue) return;
+        if (!ftySap || !newValue) {
+            throw new Error(`Row ${index + 1}: both FTY SAP and new value are required.`);
+        }
+
+        updates.push({ ftySap, newValue });
+    });
+
+    return updates;
+}
+
+function getBulkChangeFieldLabel(field: BulkChangeField): string {
+    if (field === 'gtn') return 'GTN';
+    if (field === 'fty_sap') return 'FTY SAP';
+    return 'Destination';
+}
+
+function getBulkChangeNewValueHeader(field: BulkChangeField): string {
+    if (field === 'gtn') return 'New GTN';
+    if (field === 'fty_sap') return 'New FTY SAP';
+    return 'New Destination';
+}
 
 const UPLOAD_FIELDS: UploadFieldKey[] = [
     'fty_sap',
@@ -557,6 +623,22 @@ export default function OrderDataPage() {
     const [bulkUploadConfirming, setBulkUploadConfirming] = React.useState(false);
     const bulkUploadInputRef = React.useRef<HTMLInputElement>(null);
 
+    const [bulkCancelOpen, setBulkCancelOpen] = React.useState(false);
+    const [bulkCancelInput, setBulkCancelInput] = React.useState('');
+    const [bulkCancelError, setBulkCancelError] = React.useState<string | null>(null);
+    const [bulkCancelBusy, setBulkCancelBusy] = React.useState(false);
+
+    const [bulkUncancelOpen, setBulkUncancelOpen] = React.useState(false);
+    const [bulkUncancelInput, setBulkUncancelInput] = React.useState('');
+    const [bulkUncancelError, setBulkUncancelError] = React.useState<string | null>(null);
+    const [bulkUncancelBusy, setBulkUncancelBusy] = React.useState(false);
+
+    const [bulkChangeOpen, setBulkChangeOpen] = React.useState(false);
+    const [bulkChangeField, setBulkChangeField] = React.useState<BulkChangeField>('gtn');
+    const [bulkChangeRows, setBulkChangeRows] = React.useState<BulkChangeRow[]>([{ ...EMPTY_BULK_CHANGE_ROW }]);
+    const [bulkChangeError, setBulkChangeError] = React.useState<string | null>(null);
+    const [bulkChangeBusy, setBulkChangeBusy] = React.useState(false);
+
     const [dialogOpen, setDialogOpen] = React.useState(false);
     const [dialogMode, setDialogMode] = React.useState<'add' | 'edit'>('add');
     const [editingId, setEditingId] = React.useState<number | null>(null);
@@ -581,7 +663,7 @@ export default function OrderDataPage() {
             .from(TABLE_NAME)
             .select('*')
             .order('id', { ascending: false })
-            .limit(500);
+            .range(0, ORDER_DATA_FETCH_MAX_ROWS - 1);
 
         if (error) {
             setFetchError(error.message);
@@ -714,9 +796,46 @@ export default function OrderDataPage() {
         setBulkUploadError(null);
     };
 
+    const handleOpenBulkCancel = () => {
+        handleCloseQuickActions();
+        setBulkCancelOpen(true);
+        setBulkCancelInput('');
+        setBulkCancelError(null);
+    };
+
+    const handleOpenBulkUncancel = () => {
+        handleCloseQuickActions();
+        setBulkUncancelOpen(true);
+        setBulkUncancelInput('');
+        setBulkUncancelError(null);
+    };
+
+    const handleOpenBulkChange = (field: BulkChangeField) => {
+        handleCloseQuickActions();
+        setBulkChangeField(field);
+        setBulkChangeOpen(true);
+        setBulkChangeRows([{ ...EMPTY_BULK_CHANGE_ROW }]);
+        setBulkChangeError(null);
+    };
+
     const handleCloseBulkUpload = () => {
         if (bulkUploadBusy || bulkUploadConfirming) return;
         setBulkUploadOpen(false);
+    };
+
+    const handleCloseBulkCancel = () => {
+        if (bulkCancelBusy) return;
+        setBulkCancelOpen(false);
+    };
+
+    const handleCloseBulkUncancel = () => {
+        if (bulkUncancelBusy) return;
+        setBulkUncancelOpen(false);
+    };
+
+    const handleCloseBulkChange = () => {
+        if (bulkChangeBusy) return;
+        setBulkChangeOpen(false);
     };
 
     const handleUploadFileClick = () => {
@@ -886,6 +1005,227 @@ export default function OrderDataPage() {
         }
     };
 
+    const handleConfirmBulkCancel = async () => {
+        const ftySapList = parseFtySapList(bulkCancelInput);
+        if (ftySapList.length === 0) {
+            setBulkCancelError('Enter at least one FTY SAP value.');
+            return;
+        }
+
+        setBulkCancelBusy(true);
+        setBulkCancelError(null);
+
+        try {
+            let updatedCount = 0;
+
+            for (let index = 0; index < ftySapList.length; index += 200) {
+                const chunk = ftySapList.slice(index, index + 200);
+                const { data, error } = await supabase
+                    .from(TABLE_NAME)
+                    .update({ cancel_status: true })
+                    .in('fty_sap', chunk)
+                    .select('id');
+
+                if (error) {
+                    throw new Error(error.message);
+                }
+
+                updatedCount += data?.length ?? 0;
+            }
+
+            setBulkCancelOpen(false);
+            setSnackbar({
+                open: true,
+                message: `Bulk cancel completed. Updated ${updatedCount} row(s) from ${ftySapList.length} FTY SAP value(s).`,
+                severity: 'success',
+            });
+            fetchRows();
+        } catch (error) {
+            setBulkCancelError(error instanceof Error ? error.message : 'Bulk cancel failed.');
+        } finally {
+            setBulkCancelBusy(false);
+        }
+    };
+
+    const handleConfirmBulkUncancel = async () => {
+        const ftySapList = parseFtySapList(bulkUncancelInput);
+        if (ftySapList.length === 0) {
+            setBulkUncancelError('Enter at least one FTY SAP value.');
+            return;
+        }
+
+        setBulkUncancelBusy(true);
+        setBulkUncancelError(null);
+
+        try {
+            let updatedCount = 0;
+
+            for (let index = 0; index < ftySapList.length; index += 200) {
+                const chunk = ftySapList.slice(index, index + 200);
+                const { data, error } = await supabase
+                    .from(TABLE_NAME)
+                    .update({ cancel_status: false })
+                    .in('fty_sap', chunk)
+                    .select('id');
+
+                if (error) {
+                    throw new Error(error.message);
+                }
+
+                updatedCount += data?.length ?? 0;
+            }
+
+            setBulkUncancelOpen(false);
+            setSnackbar({
+                open: true,
+                message: `Bulk uncancel completed. Updated ${updatedCount} row(s) from ${ftySapList.length} FTY SAP value(s).`,
+                severity: 'success',
+            });
+            fetchRows();
+        } catch (error) {
+            setBulkUncancelError(error instanceof Error ? error.message : 'Bulk uncancel failed.');
+        } finally {
+            setBulkUncancelBusy(false);
+        }
+    };
+
+    const handleConfirmBulkChange = async () => {
+        let updates: Array<{ ftySap: string; newValue: string }>;
+        try {
+            updates = parseBulkChangeRows(bulkChangeRows);
+        } catch (error) {
+            setBulkChangeError(error instanceof Error ? error.message : 'Invalid bulk change input.');
+            return;
+        }
+
+        if (updates.length === 0) {
+            setBulkChangeError('Enter at least one update line.');
+            return;
+        }
+
+        setBulkChangeBusy(true);
+        setBulkChangeError(null);
+
+        try {
+            let updatedCount = 0;
+
+            for (const update of updates) {
+                if (bulkChangeField === 'destination') {
+                    const { data: rowsToUpdate, error: readError } = await supabase
+                        .from(TABLE_NAME)
+                        .select('id, destination, changes')
+                        .eq('fty_sap', update.ftySap);
+
+                    if (readError) {
+                        throw new Error(readError.message);
+                    }
+
+                    for (const row of rowsToUpdate ?? []) {
+                        const oldDestination = String(row.destination ?? '-');
+                        const changeMessage = `destination change from ${oldDestination} to ${update.newValue}`;
+                        const nextChanges = row.changes
+                            ? `${row.changes} | ${changeMessage}`
+                            : changeMessage;
+
+                        const { data, error } = await supabase
+                            .from(TABLE_NAME)
+                            .update({ destination: update.newValue, changes: nextChanges })
+                            .eq('id', row.id)
+                            .select('id');
+
+                        if (error) {
+                            throw new Error(error.message);
+                        }
+
+                        updatedCount += data?.length ?? 0;
+                    }
+                } else {
+                    const { data, error } = await supabase
+                        .from(TABLE_NAME)
+                        .update({ [bulkChangeField]: update.newValue })
+                        .eq('fty_sap', update.ftySap)
+                        .select('id');
+
+                    if (error) {
+                        throw new Error(error.message);
+                    }
+
+                    updatedCount += data?.length ?? 0;
+                }
+            }
+
+            const fieldLabel = getBulkChangeFieldLabel(bulkChangeField);
+
+            setBulkChangeOpen(false);
+            setSnackbar({
+                open: true,
+                message: `Bulk change ${fieldLabel} completed. Updated ${updatedCount} row(s) from ${updates.length} mapping line(s).`,
+                severity: 'success',
+            });
+            fetchRows();
+        } catch (error) {
+            setBulkChangeError(error instanceof Error ? error.message : 'Bulk change failed.');
+        } finally {
+            setBulkChangeBusy(false);
+        }
+    };
+
+    const handleBulkChangeRowChange = (rowIndex: number, field: keyof BulkChangeRow) => (
+        event: React.ChangeEvent<HTMLInputElement>,
+    ) => {
+        const value = event.target.value;
+        setBulkChangeRows((prev) => {
+            const next = prev.map((row) => ({ ...row }));
+            if (!next[rowIndex]) {
+                next[rowIndex] = { ...EMPTY_BULK_CHANGE_ROW };
+            }
+            next[rowIndex] = { ...next[rowIndex], [field]: value };
+            return normalizeBulkChangeRows(next);
+        });
+    };
+
+    const handleBulkChangePaste = (rowIndex: number, columnIndex: 0 | 1) => (
+        event: React.ClipboardEvent<HTMLInputElement>,
+    ) => {
+        const pastedText = event.clipboardData.getData('text');
+        if (!pastedText.includes('\t') && !pastedText.includes('\n')) {
+            return;
+        }
+
+        const matrix = pastedText
+            .replace(/\r/g, '')
+            .split('\n')
+            .filter((line) => line.length > 0)
+            .map((line) => line.split('\t'));
+
+        if (matrix.length === 0) return;
+
+        event.preventDefault();
+
+        setBulkChangeRows((prev) => {
+            const next = prev.map((row) => ({ ...row }));
+
+            matrix.forEach((rowValues, pastedRowOffset) => {
+                const targetRow = rowIndex + pastedRowOffset;
+                if (!next[targetRow]) {
+                    next[targetRow] = { ...EMPTY_BULK_CHANGE_ROW };
+                }
+
+                rowValues.forEach((cellValue, pastedColumnOffset) => {
+                    const targetColumn = columnIndex + pastedColumnOffset;
+                    if (targetColumn > 1) return;
+                    if (targetColumn === 0) {
+                        next[targetRow].ftySap = cellValue.trim();
+                    } else {
+                        next[targetRow].newValue = cellValue.trim();
+                    }
+                });
+            });
+
+            return normalizeBulkChangeRows(next);
+        });
+    };
+
     const openAddDialog = () => {
         setDialogMode('add');
         setEditingId(null);
@@ -984,7 +1324,19 @@ export default function OrderDataPage() {
                             Manage records from public.order_data
                         </Typography>
                     </Box>
-                    <Box sx={{ ml: 'auto' }}>
+                    <Box sx={{ ml: 'auto', display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Tooltip title="Refresh data">
+                            <span>
+                                <IconButton
+                                    size="small"
+                                    onClick={() => { fetchRows(); }}
+                                    disabled={fetching}
+                                    aria-label="Refresh order data"
+                                >
+                                    <RefreshIcon fontSize="small" />
+                                </IconButton>
+                            </span>
+                        </Tooltip>
                         <Chip
                             label={`${filteredRows.length} record${filteredRows.length !== 1 ? 's' : ''}`}
                             color="primary"
@@ -1035,33 +1387,9 @@ export default function OrderDataPage() {
                                 variant="outlined"
                                 endIcon={<ArrowDropDownIcon />}
                                 onClick={handleOpenQuickActions}
-                            >
-                                Quick Actions
-                            </Button>
-                            <Button
-                                variant="contained"
-                                startIcon={<AddIcon />}
-                                onClick={openAddDialog}
                                 sx={{ ml: { xs: 0, md: 'auto' } }}
                             >
-                                Add Order Row
-                            </Button>
-                            <Button
-                                variant="outlined"
-                                startIcon={<EditIcon />}
-                                onClick={() => { if (selectedRow) openEditDialog(selectedRow); }}
-                                disabled={!selectedRow}
-                            >
-                                Edit Selected
-                            </Button>
-                            <Button
-                                variant="outlined"
-                                color="error"
-                                startIcon={<DeleteIcon />}
-                                onClick={() => { if (selectedRow) setDeleteTarget(selectedRow); }}
-                                disabled={!selectedRow}
-                            >
-                                Delete Selected
+                                Quick Actions
                             </Button>
                         </Box>
 
@@ -1072,7 +1400,27 @@ export default function OrderDataPage() {
                         >
                             <MenuItem onClick={handleOpenBulkUpload}>
                                 <UploadFileIcon fontSize="small" sx={{ mr: 1 }} />
-                                Bulk Upload
+                                Upload Orders
+                            </MenuItem>
+                            <MenuItem onClick={handleOpenBulkCancel}>
+                                <ClearIcon fontSize="small" sx={{ mr: 1 }} />
+                                Bulk Cancel Orders
+                            </MenuItem>
+                            <MenuItem onClick={handleOpenBulkUncancel}>
+                                <ClearIcon fontSize="small" sx={{ mr: 1 }} />
+                                Bulk Uncancel Orders
+                            </MenuItem>
+                            <MenuItem onClick={() => { handleOpenBulkChange('gtn'); }}>
+                                <EditIcon fontSize="small" sx={{ mr: 1 }} />
+                                Bulk Change GTN
+                            </MenuItem>
+                            <MenuItem onClick={() => { handleOpenBulkChange('fty_sap'); }}>
+                                <EditIcon fontSize="small" sx={{ mr: 1 }} />
+                                Bulk Change FTY SAP
+                            </MenuItem>
+                            <MenuItem onClick={() => { handleOpenBulkChange('destination'); }}>
+                                <EditIcon fontSize="small" sx={{ mr: 1 }} />
+                                Bulk Change Destination
                             </MenuItem>
                         </Menu>
 
@@ -1212,7 +1560,7 @@ export default function OrderDataPage() {
             </Dialog>
 
             <Dialog open={bulkUploadOpen} onClose={handleCloseBulkUpload} fullWidth maxWidth="xl">
-                <DialogTitle>Bulk Upload Order Data</DialogTitle>
+                <DialogTitle>Upload Orders</DialogTitle>
                 <DialogContent dividers>
                     <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.5, alignItems: 'center', mb: 2 }}>
                         <Button
@@ -1277,6 +1625,153 @@ export default function OrderDataPage() {
                         disabled={bulkUploadBusy || bulkUploadConfirming || bulkUploadPreview.length === 0 || insertableCount === 0}
                     >
                         {bulkUploadConfirming ? 'Uploading...' : `Confirm Insert (${insertableCount})`}
+                    </Button>
+                </DialogActions>
+            </Dialog>
+
+            <Dialog open={bulkCancelOpen} onClose={handleCloseBulkCancel} fullWidth maxWidth="sm">
+                <DialogTitle>Bulk Cancel Orders</DialogTitle>
+                <DialogContent dividers>
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                        Enter one or more FTY SAP values separated by newline, comma, semicolon, or tab.
+                    </Typography>
+                    <TextField
+                        fullWidth
+                        label="FTY SAP values"
+                        value={bulkCancelInput}
+                        onChange={(event) => { setBulkCancelInput(event.target.value); }}
+                        multiline
+                        minRows={6}
+                        placeholder={'12345\n12346\n12347'}
+                        disabled={bulkCancelBusy}
+                    />
+                    {bulkCancelError && (
+                        <Alert severity="error" sx={{ mt: 2 }}>
+                            {bulkCancelError}
+                        </Alert>
+                    )}
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={handleCloseBulkCancel} disabled={bulkCancelBusy}>Close</Button>
+                    <Button variant="contained" onClick={handleConfirmBulkCancel} disabled={bulkCancelBusy}>
+                        {bulkCancelBusy ? 'Cancelling...' : 'Confirm Cancel'}
+                    </Button>
+                </DialogActions>
+            </Dialog>
+
+            <Dialog open={bulkUncancelOpen} onClose={handleCloseBulkUncancel} fullWidth maxWidth="sm">
+                <DialogTitle>Bulk Uncancel Orders</DialogTitle>
+                <DialogContent dividers>
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                        Enter one or more FTY SAP values separated by newline, comma, semicolon, or tab.
+                    </Typography>
+                    <TextField
+                        fullWidth
+                        label="FTY SAP values"
+                        value={bulkUncancelInput}
+                        onChange={(event) => { setBulkUncancelInput(event.target.value); }}
+                        multiline
+                        minRows={6}
+                        placeholder={'12345\n12346\n12347'}
+                        disabled={bulkUncancelBusy}
+                    />
+                    {bulkUncancelError && (
+                        <Alert severity="error" sx={{ mt: 2 }}>
+                            {bulkUncancelError}
+                        </Alert>
+                    )}
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={handleCloseBulkUncancel} disabled={bulkUncancelBusy}>Close</Button>
+                    <Button variant="contained" onClick={handleConfirmBulkUncancel} disabled={bulkUncancelBusy}>
+                        {bulkUncancelBusy ? 'Uncancelling...' : 'Confirm Uncancel'}
+                    </Button>
+                </DialogActions>
+            </Dialog>
+
+            <Dialog open={bulkChangeOpen} onClose={handleCloseBulkChange} fullWidth maxWidth="md">
+                <DialogTitle>
+                    {`Bulk Change ${getBulkChangeFieldLabel(bulkChangeField)}`}
+                </DialogTitle>
+                <DialogContent dividers>
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                        Paste directly from Excel. The table auto-adds rows when multiple lines are pasted.
+                    </Typography>
+                    <Box
+                        sx={{
+                            border: (theme) => `1px solid ${theme.palette.divider}`,
+                            borderRadius: 1,
+                            overflow: 'hidden',
+                        }}
+                    >
+                        <Box
+                            sx={{
+                                display: 'grid',
+                                gridTemplateColumns: '1fr 1fr',
+                                bgcolor: 'action.hover',
+                                borderBottom: (theme) => `1px solid ${theme.palette.divider}`,
+                            }}
+                        >
+                            <Box sx={{ px: 1.5, py: 1, borderRight: (theme) => `1px solid ${theme.palette.divider}` }}>
+                                <Typography variant="subtitle2">FTY SAP</Typography>
+                            </Box>
+                            <Box sx={{ px: 1.5, py: 1 }}>
+                                <Typography variant="subtitle2">{getBulkChangeNewValueHeader(bulkChangeField)}</Typography>
+                            </Box>
+                        </Box>
+
+                        <Box sx={{ maxHeight: 360, overflowY: 'auto' }}>
+                            {bulkChangeRows.map((row, index) => (
+                                <Box
+                                    key={`bulk-change-row-${index}`}
+                                    sx={{
+                                        display: 'grid',
+                                        gridTemplateColumns: '1fr 1fr',
+                                        borderBottom: index === bulkChangeRows.length - 1
+                                            ? 'none'
+                                            : (theme) => `1px solid ${theme.palette.divider}`,
+                                    }}
+                                >
+                                    <Box sx={{ borderRight: (theme) => `1px solid ${theme.palette.divider}` }}>
+                                        <TextField
+                                            fullWidth
+                                            size="small"
+                                            variant="standard"
+                                            value={row.ftySap}
+                                            onChange={handleBulkChangeRowChange(index, 'ftySap')}
+                                            onPaste={handleBulkChangePaste(index, 0)}
+                                            placeholder={index === 0 ? 'e.g. 12345' : undefined}
+                                            disabled={bulkChangeBusy}
+                                            InputProps={{ disableUnderline: true, sx: { px: 1.5, py: 1 } }}
+                                        />
+                                    </Box>
+                                    <Box>
+                                        <TextField
+                                            fullWidth
+                                            size="small"
+                                            variant="standard"
+                                            value={row.newValue}
+                                            onChange={handleBulkChangeRowChange(index, 'newValue')}
+                                            onPaste={handleBulkChangePaste(index, 1)}
+                                            placeholder={index === 0 ? 'e.g. NEW_VALUE' : undefined}
+                                            disabled={bulkChangeBusy}
+                                            InputProps={{ disableUnderline: true, sx: { px: 1.5, py: 1 } }}
+                                        />
+                                    </Box>
+                                </Box>
+                            ))}
+                        </Box>
+                    </Box>
+                    {bulkChangeError && (
+                        <Alert severity="error" sx={{ mt: 2 }}>
+                            {bulkChangeError}
+                        </Alert>
+                    )}
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={handleCloseBulkChange} disabled={bulkChangeBusy}>Close</Button>
+                    <Button variant="contained" onClick={handleConfirmBulkChange} disabled={bulkChangeBusy}>
+                        {bulkChangeBusy ? 'Updating...' : 'Confirm Update'}
                     </Button>
                 </DialogActions>
             </Dialog>

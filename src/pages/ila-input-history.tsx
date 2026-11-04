@@ -25,6 +25,7 @@ import Typography from '@mui/material/Typography';
 import Pagination from '@mui/material/Pagination';
 import ArrowDropDownIcon from '@mui/icons-material/ArrowDropDown';
 import ClearIcon from '@mui/icons-material/Clear';
+import RefreshIcon from '@mui/icons-material/Refresh';
 // NOTE: ExcelIcon isn't a stock MUI icon — point this at wherever your
 // project already defines it (e.g. a custom SvgIcon component).
 import ListAltIcon from '@mui/icons-material/ListAlt';
@@ -471,43 +472,46 @@ export default function AveryNotesPage() {
         [inputTypes]
     );
 
+    const fetchData = React.useCallback(async (from: string, to: string) => {
+        if (!user) return;
+
+        setFetching(true);
+        setFetchError(null);
+
+        let itemsQuery = supabase
+            .from('ila_avery_note_items')
+            .select('id, seq, po_no, art, remark, print_qty, created_at, done, input_id, dept_id, returned, short_group_code, label_id')
+            .order('seq', { ascending: true });
+
+        // Pull only the rows within the selected date range from the
+        // server, instead of loading the whole table and filtering
+        // client-side. With no saved filters yet this is today only.
+        if (from) {
+            itemsQuery = itemsQuery.gte('created_at', new Date(`${from}T00:00:00`).toISOString());
+        }
+        if (to) {
+            itemsQuery = itemsQuery.lte('created_at', new Date(`${to}T23:59:59.999`).toISOString());
+        }
+
+        const [itemsRes, deptRes, inputRes] = await Promise.all([
+            itemsQuery,
+            supabase.from('departments').select('id, title').order('title', { ascending: true }),
+            supabase.from('input_type').select('id, title').order('title', { ascending: true }),
+        ]);
+        if (itemsRes.error) {
+            setFetchError(itemsRes.error.message);
+        } else {
+            setRows(itemsRes.data ?? []);
+        }
+        setDepartments(deptRes.data ?? []);
+        setInputTypes(inputRes.data ?? []);
+        setFetching(false);
+    }, [user]);
+
     React.useEffect(() => {
         if (!user) return;
-        async function fetchData() {
-            setFetching(true);
-            setFetchError(null);
-
-            let itemsQuery = supabase
-                .from('ila_avery_note_items')
-                .select('id, seq, po_no, art, remark, print_qty, created_at, done, input_id, dept_id, returned, short_group_code, label_id')
-                .order('seq', { ascending: true });
-
-            // Pull only the rows within the selected date range from the
-            // server, instead of loading the whole table and filtering
-            // client-side. With no saved filters yet this is today only.
-            if (dateFrom) {
-                itemsQuery = itemsQuery.gte('created_at', new Date(`${dateFrom}T00:00:00`).toISOString());
-            }
-            if (dateTo) {
-                itemsQuery = itemsQuery.lte('created_at', new Date(`${dateTo}T23:59:59.999`).toISOString());
-            }
-
-            const [itemsRes, deptRes, inputRes] = await Promise.all([
-                itemsQuery,
-                supabase.from('departments').select('id, title').order('title', { ascending: true }),
-                supabase.from('input_type').select('id, title').order('title', { ascending: true }),
-            ]);
-            if (itemsRes.error) {
-                setFetchError(itemsRes.error.message);
-            } else {
-                setRows(itemsRes.data ?? []);
-            }
-            setDepartments(deptRes.data ?? []);
-            setInputTypes(inputRes.data ?? []);
-            setFetching(false);
-        }
-        fetchData();
-    }, [user, dateFrom, dateTo]);
+        fetchData(dateFrom, dateTo);
+    }, [user]);
 
     const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         setSearch(e.target.value);
@@ -1075,6 +1079,18 @@ export default function AveryNotesPage() {
                         </Typography>
                     </Box>
                     <Box sx={{ ml: 'auto', display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                        <Tooltip title="Refresh data">
+                            <span>
+                                <IconButton
+                                    size="small"
+                                    onClick={() => { fetchData(dateFrom, dateTo); }}
+                                    disabled={fetching}
+                                    aria-label="Refresh ILA input history"
+                                >
+                                    <RefreshIcon fontSize="small" />
+                                </IconButton>
+                            </span>
+                        </Tooltip>
                         <Chip
                             label={`${filteredRows.length} record${filteredRows.length !== 1 ? 's' : ''}`}
                             color="primary"
