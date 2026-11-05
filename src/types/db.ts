@@ -30,6 +30,10 @@ export type OrderData = {
     id: number;
     cancel_status: boolean;
     fty_sap: string | null;
+    in_at: string | null;
+    in_by: string | null;
+    out_at: string | null;
+    out_by: string | null;
     gtn: string | null;
     release_date: string | null;
     model_number: string | null;

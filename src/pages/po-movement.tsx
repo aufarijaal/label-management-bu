@@ -32,15 +32,9 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 import EditIcon from '@mui/icons-material/Edit';
 import { useAuth } from '../context/AuthContext';
+import { supabase } from '../lib/supabaseClient';
 
-/* -------------------------------------------------------------------------
-   CONFIG
-   Endpoint for the Google Apps Script web app that appends rows to the PO
-   movement sheet. Set NEXT_PUBLIC_PO_MOVEMENT_SCRIPT_URL in .env.local to
-   avoid hardcoding deployment URLs in source; falls back to the original
-   deployment if unset.
-   ------------------------------------------------------------------------- */
-const APPS_SCRIPT_URL = process.env.NEXT_PUBLIC_PO_MOVEMENT_SCRIPT_URL;
+const ORDER_DATA_TABLE = 'order_data';
 
 const STORAGE_KEY_OPERATOR = 'po_movement_operator_name';
 const PO_LENGTH = 8;
@@ -66,6 +60,14 @@ let idCounter = 0;
 function nextId() {
     idCounter += 1;
     return `po-${Date.now()}-${idCounter}`;
+}
+
+function getTodayDateString() {
+    const now = new Date();
+    const yyyy = String(now.getFullYear());
+    const mm = String(now.getMonth() + 1).padStart(2, '0');
+    const dd = String(now.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
 }
 
 export default function PoMovementPage() {
@@ -278,25 +280,33 @@ export default function PoMovementPage() {
     }
 
     async function submitOne(item, action, name) {
-        const payload = {
-            name,
-            po: formatPo(item),
-            action,
-            inputMethod: item.method
-        };
+        const poSapNumber = formatPo(item);
+        const today = getTodayDateString();
+        const updatePayload =
+            action === 'OUT'
+                ? {
+                      out_at: today,
+                      out_by: name
+                  }
+                : {
+                      in_at: today,
+                      in_by: name
+                  };
+
         try {
-            const res = await fetch(APPS_SCRIPT_URL, {
-                method: 'POST',
-                // text/plain avoids a CORS preflight against Apps Script Web Apps.
-                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-                body: JSON.stringify(payload)
-            });
-            if (!res.ok) throw new Error(`Bad response: ${res.status}`);
-            const data = await res.json();
-            if (!data || data.status !== 'ok') throw new Error((data && data.message) || 'Server rejected the request');
-            return true;
+            const { data, error } = await supabase
+                .from(ORDER_DATA_TABLE)
+                .update(updatePayload)
+                .eq('fty_sap', poSapNumber)
+                .select('id');
+
+            if (error) {
+                throw new Error(error.message);
+            }
+
+            return (data?.length ?? 0) > 0;
         } catch (err) {
-            console.error('Submit failed for', payload.po, err);
+            console.error('Submit failed for', poSapNumber, err);
             return false;
         }
     }
