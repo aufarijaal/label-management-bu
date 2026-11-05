@@ -282,18 +282,55 @@ export default function PoMovementPage() {
     async function submitOne(item, action, name) {
         const poSapNumber = formatPo(item);
         const today = getTodayDateString();
-        const updatePayload =
-            action === 'OUT'
-                ? {
-                      out_at: today,
-                      out_by: name
-                  }
-                : {
-                      in_at: today,
-                      in_by: name
-                  };
 
         try {
+            // Read the current movement state first so a duplicate IN/OUT is
+            // rejected with details instead of silently overwriting the
+            // original in_at/out_at and operator.
+            const { data: existingRows, error: fetchError } = await supabase
+                .from(ORDER_DATA_TABLE)
+                .select('id, in_at, in_by, out_at, out_by')
+                .eq('fty_sap', poSapNumber);
+
+            if (fetchError) {
+                throw new Error(fetchError.message);
+            }
+
+            if (!existingRows || existingRows.length === 0) {
+                return { ok: false, errorMessage: 'PO not found in order data' };
+            }
+
+            if (action === 'IN') {
+                const alreadyIn = existingRows.find((row) => row.in_at);
+                if (alreadyIn) {
+                    return {
+                        ok: false,
+                        errorMessage: `Already marked IN on ${alreadyIn.in_at}${alreadyIn.in_by ? ` by ${alreadyIn.in_by}` : ''}`
+                    };
+                }
+            }
+
+            if (action === 'OUT') {
+                const alreadyOut = existingRows.find((row) => row.out_at);
+                if (alreadyOut) {
+                    return {
+                        ok: false,
+                        errorMessage: `Already marked OUT on ${alreadyOut.out_at}${alreadyOut.out_by ? ` by ${alreadyOut.out_by}` : ''}`
+                    };
+                }
+            }
+
+            const updatePayload =
+                action === 'OUT'
+                    ? {
+                          out_at: today,
+                          out_by: name
+                      }
+                    : {
+                          in_at: today,
+                          in_by: name
+                      };
+
             const { data, error } = await supabase
                 .from(ORDER_DATA_TABLE)
                 .update(updatePayload)
@@ -304,24 +341,36 @@ export default function PoMovementPage() {
                 throw new Error(error.message);
             }
 
-            return (data?.length ?? 0) > 0;
+            return (data?.length ?? 0) > 0
+                ? { ok: true }
+                : { ok: false, errorMessage: 'PO not found in order data' };
         } catch (err) {
             console.error('Submit failed for', poSapNumber, err);
-            return false;
+            return { ok: false, errorMessage: err?.message || 'Failed to save — try again' };
         }
     }
 
     async function submitItems(targetItems) {
         setSubmitting(true);
-        setItems((prev) => prev.map((it) => (targetItems.some((t) => t.id === it.id) ? { ...it, status: 'pending' } : it)));
+        setItems((prev) =>
+            prev.map((it) =>
+                targetItems.some((t) => t.id === it.id) ? { ...it, status: 'pending', errorMessage: undefined } : it
+            )
+        );
 
         // Submitted one at a time (not in parallel) — Apps Script web apps can
         // throttle or drop concurrent requests, and this lets each PO report
         // its own success/failure instead of the whole batch failing together.
         for (const item of targetItems) {
             // eslint-disable-next-line no-await-in-loop
-            const ok = await submitOne(item, pendingAction, operatorName);
-            setItems((prev) => prev.map((it) => (it.id === item.id ? { ...it, status: ok ? 'success' : 'error' } : it)));
+            const result = await submitOne(item, pendingAction, operatorName);
+            setItems((prev) =>
+                prev.map((it) =>
+                    it.id === item.id
+                        ? { ...it, status: result.ok ? 'success' : 'error', errorMessage: result.errorMessage }
+                        : it
+                )
+            );
         }
 
         setSubmitting(false);
@@ -457,7 +506,11 @@ export default function PoMovementPage() {
                                             >
                                                 <ListItemText
                                                     primary={formatPo(item)}
-                                                    secondary={item.status === 'error' ? 'Failed to save — try again' : item.method}
+                                                    secondary={
+                                                        item.status === 'error'
+                                                            ? item.errorMessage || 'Failed to save — try again'
+                                                            : item.method
+                                                    }
                                                     secondaryTypographyProps={{
                                                         sx: { color: item.status === 'error' ? 'error.main' : 'text.secondary' }
                                                     }}
@@ -567,13 +620,22 @@ export default function PoMovementPage() {
                                     ) : null
                                 }
                             >
-                                <ListItemText primary={formatPo(item)} secondary={item.method} />
+                                <ListItemText
+                                    primary={formatPo(item)}
+                                    secondary={
+                                        item.status === 'error' && item.errorMessage ? `${item.method} — ${item.errorMessage}` : item.method
+                                    }
+                                    secondaryTypographyProps={{
+                                        sx: { color: item.status === 'error' ? 'error.main' : 'text.secondary' }
+                                    }}
+                                />
                             </ListItem>
                         ))}
                     </List>
                     {hasStarted && allSubmitted && (
                         <Typography variant="body2" sx={{ mt: 1.5 }} color={failedCount ? 'error' : 'success.main'}>
-                            {succeededCount} of {items.length} saved{failedCount ? ` — ${failedCount} failed` : ''}
+                            {succeededCount} of {items.length} saved
+                            {failedCount ? ` — ${failedCount} rejected/failed (see details above)` : ''}
                         </Typography>
                     )}
                 </DialogContent>
