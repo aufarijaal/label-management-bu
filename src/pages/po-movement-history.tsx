@@ -191,6 +191,11 @@ function statusOf(row: MovementRow): string {
     return 'Not Started';
 }
 
+function toIsoDateOnly(value: string): string | null {
+    if (!value) return null;
+    return /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : null;
+}
+
 export default function PoMovementHistoryPage() {
     const router = useRouter();
     const { mode } = useColorMode();
@@ -202,6 +207,8 @@ export default function PoMovementHistoryPage() {
     const [searchInput, setSearchInput] = React.useState('');
     const [search, setSearch] = React.useState('');
     const [statusFilter, setStatusFilter] = React.useState<StatusFilter>('all');
+    const [dateFrom, setDateFrom] = React.useState('');
+    const [dateTo, setDateTo] = React.useState('');
 
     const [summary, setSummary] = React.useState({ total: 0, in: 0, out: 0, completed: 0, pending: 0 });
 
@@ -238,6 +245,13 @@ export default function PoMovementHistoryPage() {
         setLoading(true);
         setError(null);
 
+        const normalizedFrom = toIsoDateOnly(dateFrom);
+        const normalizedTo = toIsoDateOnly(dateTo);
+        const effectiveFrom =
+            normalizedFrom && normalizedTo && normalizedFrom > normalizedTo ? normalizedTo : normalizedFrom;
+        const effectiveTo =
+            normalizedFrom && normalizedTo && normalizedFrom > normalizedTo ? normalizedFrom : normalizedTo;
+
         const buildQuery = () => {
             let query = supabase
                 .from(TABLE_NAME)
@@ -262,6 +276,21 @@ export default function PoMovementHistoryPage() {
                 case 'completed':
                     query = query.not('in_at', 'is', null).not('out_at', 'is', null);
                     break;
+            }
+
+            if (effectiveFrom || effectiveTo) {
+                const inFilters = ['in_at.not.is.null'];
+                const outFilters = ['out_at.not.is.null'];
+                if (effectiveFrom) {
+                    inFilters.push(`in_at.gte.${effectiveFrom}`);
+                    outFilters.push(`out_at.gte.${effectiveFrom}`);
+                }
+                if (effectiveTo) {
+                    inFilters.push(`in_at.lte.${effectiveTo}`);
+                    outFilters.push(`out_at.lte.${effectiveTo}`);
+                }
+
+                query = query.or(`and(${inFilters.join(',')}),and(${outFilters.join(',')})`);
             }
 
             return query;
@@ -296,7 +325,7 @@ export default function PoMovementHistoryPage() {
             setRows([]);
         }
         setLoading(false);
-    }, [search, statusFilter]);
+    }, [search, statusFilter, dateFrom, dateTo]);
 
     React.useEffect(() => {
         fetchSummary();
@@ -310,6 +339,13 @@ export default function PoMovementHistoryPage() {
         fetchSummary();
         fetchRows();
     }
+
+    function clearDateRange() {
+        setDateFrom('');
+        setDateTo('');
+    }
+
+    const hasDateFilter = Boolean(dateFrom || dateTo);
 
     const htTheme = mode === 'dark' ? MUIThemeForHTTableDark : MUIThemeForHTTableLight;
 
@@ -501,6 +537,33 @@ export default function PoMovementHistoryPage() {
                                 ))}
                             </Select>
                         </FormControl>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 280 }}>
+                            <TextField
+                                size="small"
+                                type="date"
+                                label="From"
+                                value={dateFrom}
+                                onChange={(e) => setDateFrom(e.target.value)}
+                                InputLabelProps={{ shrink: true }}
+                                sx={{ minWidth: 140 }}
+                            />
+                            <TextField
+                                size="small"
+                                type="date"
+                                label="To"
+                                value={dateTo}
+                                onChange={(e) => setDateTo(e.target.value)}
+                                InputLabelProps={{ shrink: true }}
+                                sx={{ minWidth: 140 }}
+                            />
+                            {hasDateFilter ? (
+                                <Tooltip title="Clear date range">
+                                    <IconButton size="small" onClick={clearDateRange}>
+                                        <ClearIcon fontSize="small" />
+                                    </IconButton>
+                                </Tooltip>
+                            ) : null}
+                        </Box>
                         <Tooltip title="Refresh">
                             <IconButton onClick={handleRefresh} disabled={loading}>
                                 <RefreshIcon />

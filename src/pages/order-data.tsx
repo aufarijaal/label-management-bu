@@ -18,6 +18,7 @@ import FormControlLabel from '@mui/material/FormControlLabel';
 import IconButton from '@mui/material/IconButton';
 import InputAdornment from '@mui/material/InputAdornment';
 import InputLabel from '@mui/material/InputLabel';
+import ListItemText from '@mui/material/ListItemText';
 import Menu from '@mui/material/Menu';
 import MenuItem from '@mui/material/MenuItem';
 import Snackbar from '@mui/material/Snackbar';
@@ -33,6 +34,7 @@ import Inventory2Icon from '@mui/icons-material/Inventory2';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import SearchIcon from '@mui/icons-material/Search';
 import UploadFileIcon from '@mui/icons-material/UploadFile';
+import ViewColumnIcon from '@mui/icons-material/ViewColumn';
 import Grid from '@mui/material/Grid';
 import * as XLSX from 'xlsx';
 import { useAuth } from '../context/AuthContext';
@@ -380,6 +382,15 @@ function parseFtySapList(value: string): string[] {
     ));
 }
 
+function parseMultiValueList(value: string): string[] {
+    return Array.from(new Set(
+        value
+            .split(/[\n,;\t]+/)
+            .map((item) => item.trim())
+            .filter((item) => item.length > 0),
+    ));
+}
+
 function buildUploadAliasMap(): Map<string, UploadFieldKey> {
     const aliasMap = new Map<string, UploadFieldKey>();
 
@@ -551,6 +562,8 @@ type OrderTableRow = Record<SizeKey, number | null> & {
     release_date: string;
     fty_sap: string;
     gtn: string;
+    old_gtn: string;
+    old_sap: string;
     model_number: string;
     model_name: string;
     art: string;
@@ -559,35 +572,38 @@ type OrderTableRow = Record<SizeKey, number | null> & {
     changes: string;
 };
 
+const ORDER_TABLE_COLUMN_DEFINITIONS = [
+    { key: 'id', label: 'ID', type: 'numeric' as const },
+    { key: 'cancel_status', label: 'Cancel Status', type: 'text' as const },
+    { key: 'release_date', label: 'Release Date', type: 'text' as const },
+    { key: 'fty_sap', label: 'FTY SAP', type: 'text' as const },
+    { key: 'gtn', label: 'GTN', type: 'text' as const },
+    { key: 'old_gtn', label: 'Old GTN', type: 'text' as const },
+    { key: 'old_sap', label: 'Old SAP', type: 'text' as const },
+    { key: 'model_number', label: 'Model Number', type: 'text' as const },
+    { key: 'model_name', label: 'Model Name', type: 'text' as const },
+    { key: 'art', label: 'ART', type: 'text' as const },
+    { key: 'destination', label: 'Destination', type: 'text' as const },
+    ...SIZE_KEYS.map((field) => ({
+        key: field,
+        label: field.replace('size_', 'SIZE ').toUpperCase(),
+        type: 'numeric' as const,
+    })),
+    { key: 'total_qty', label: 'Total Qty', type: 'numeric' as const },
+    { key: 'changes', label: 'Changes', type: 'text' as const },
+] as const;
+
+type OrderTableColumnKey = (typeof ORDER_TABLE_COLUMN_DEFINITIONS)[number]['key'];
+
 const HOT_COLUMNS: Handsontable.ColumnSettings[] = [
-    { data: 'id', type: 'numeric', readOnly: true },
-    { data: 'cancel_status', type: 'text', readOnly: true },
-    { data: 'release_date', type: 'text', readOnly: true },
-    { data: 'fty_sap', type: 'text', readOnly: true },
-    { data: 'gtn', type: 'text', readOnly: true },
-    { data: 'model_number', type: 'text', readOnly: true },
-    { data: 'model_name', type: 'text', readOnly: true },
-    { data: 'art', type: 'text', readOnly: true },
-    { data: 'destination', type: 'text', readOnly: true },
-    ...SIZE_KEYS.map((field) => ({ data: field, type: 'numeric', readOnly: true })),
-    { data: 'total_qty', type: 'numeric', readOnly: true },
-    { data: 'changes', type: 'text', readOnly: true },
+    ...ORDER_TABLE_COLUMN_DEFINITIONS.map((column) => ({
+        data: column.key,
+        type: column.type,
+        readOnly: true,
+    })),
 ];
 
-const HOT_HEADERS = [
-    'ID',
-    'Cancel Status',
-    'Release Date',
-    'FTY SAP',
-    'GTN',
-    'Model Number',
-    'Model Name',
-    'ART',
-    'Destination',
-    ...SIZE_KEYS.map((field) => field.replace('size_', 'SIZE ').toUpperCase()),
-    'Total Qty',
-    'Changes',
-];
+const HOT_HEADERS = ORDER_TABLE_COLUMN_DEFINITIONS.map((column) => column.label);
 
 const BULK_PREVIEW_COLUMNS: Handsontable.ColumnSettings[] = [
     { data: 'source_row', type: 'numeric', readOnly: true },
@@ -611,9 +627,19 @@ export default function OrderDataPage() {
     const [fetchError, setFetchError] = React.useState<string | null>(null);
     const [search, setSearch] = React.useState('');
     const [cancelFilter, setCancelFilter] = React.useState<CancelFilter>('all');
+    const [quickFilterAnchorEl, setQuickFilterAnchorEl] = React.useState<null | HTMLElement>(null);
+    const quickFilterMenuOpen = Boolean(quickFilterAnchorEl);
+    const [quickFilterOpen, setQuickFilterOpen] = React.useState(false);
+    const [quickFilterDialogMode, setQuickFilterDialogMode] = React.useState<'fty_sap' | 'gtn'>('fty_sap');
+    const [quickFilterFtySapInput, setQuickFilterFtySapInput] = React.useState('');
+    const [quickFilterGtnInput, setQuickFilterGtnInput] = React.useState('');
+    const [quickFilterFtySapValues, setQuickFilterFtySapValues] = React.useState<string[]>([]);
+    const [quickFilterGtnValues, setQuickFilterGtnValues] = React.useState<string[]>([]);
 
     const [quickActionsAnchorEl, setQuickActionsAnchorEl] = React.useState<null | HTMLElement>(null);
     const quickActionsOpen = Boolean(quickActionsAnchorEl);
+    const [columnsMenuAnchor, setColumnsMenuAnchor] = React.useState<null | HTMLElement>(null);
+    const [hiddenColumns, setHiddenColumns] = React.useState<Set<OrderTableColumnKey>>(new Set());
 
     const [bulkUploadOpen, setBulkUploadOpen] = React.useState(false);
     const [bulkUploadPreview, setBulkUploadPreview] = React.useState<BulkUploadPreviewItem[]>([]);
@@ -685,10 +711,30 @@ export default function OrderDataPage() {
             return !row.cancel_status;
         });
 
-        const q = search.trim().toLowerCase();
-        if (!q) return cancelStatusFilteredRows;
+        const hasFtySapQuickFilter = quickFilterFtySapValues.length > 0;
+        const hasGtnQuickFilter = quickFilterGtnValues.length > 0;
 
-        return cancelStatusFilteredRows.filter((row) => {
+        const quickFilteredRows = (!hasFtySapQuickFilter && !hasGtnQuickFilter)
+            ? cancelStatusFilteredRows
+            : cancelStatusFilteredRows.filter((row) => {
+                const ftySap = String(row.fty_sap ?? '').trim().toLowerCase();
+                const gtn = String(row.gtn ?? '').trim().toLowerCase();
+
+                if (hasFtySapQuickFilter && !quickFilterFtySapValues.includes(ftySap)) {
+                    return false;
+                }
+
+                if (hasGtnQuickFilter && !quickFilterGtnValues.includes(gtn)) {
+                    return false;
+                }
+
+                return true;
+            });
+
+        const q = search.trim().toLowerCase();
+        if (!q) return quickFilteredRows;
+
+        return quickFilteredRows.filter((row) => {
             const pool = [
                 row.id,
                 row.cancel_status ? 'cancelled' : 'active',
@@ -705,7 +751,7 @@ export default function OrderDataPage() {
             ];
             return pool.some((value) => String(value ?? '').toLowerCase().includes(q));
         });
-    }, [rows, search, cancelFilter]);
+    }, [rows, search, cancelFilter, quickFilterFtySapValues, quickFilterGtnValues]);
 
     const tableData = React.useMemo<OrderTableRow[]>(() => {
         return filteredRows.map((row) => ({
@@ -713,10 +759,12 @@ export default function OrderDataPage() {
                 SIZE_KEYS.map((field) => [field, row[field]]),
             ) as Record<SizeKey, number | null>,
             id: row.id,
-            cancel_status: row.cancel_status ? 'Cancelled' : 'Active',
+            cancel_status: row.cancel_status ? 'true' : 'false',
             release_date: row.release_date ?? '-',
             fty_sap: row.fty_sap ?? '-',
             gtn: row.gtn ?? '-',
+            old_gtn: row.old_gtn ?? '-',
+            old_sap: row.old_sap ?? '-',
             model_number: row.model_number ?? '-',
             model_name: row.model_name ?? '-',
             art: row.art ?? '-',
@@ -788,12 +836,70 @@ export default function OrderDataPage() {
         setQuickActionsAnchorEl(null);
     };
 
+    const isColumnVisible = React.useCallback(
+        (key: OrderTableColumnKey) => !hiddenColumns.has(key),
+        [hiddenColumns],
+    );
+
+    const toggleColumn = (key: OrderTableColumnKey) => {
+        setHiddenColumns((prev) => {
+            const next = new Set(prev);
+            if (next.has(key)) {
+                next.delete(key);
+            } else {
+                next.add(key);
+            }
+            return next;
+        });
+    };
+
+    const hiddenColumnIndexes = React.useMemo(
+        () => ORDER_TABLE_COLUMN_DEFINITIONS.reduce<number[]>((acc, column, index) => {
+            if (hiddenColumns.has(column.key)) acc.push(index);
+            return acc;
+        }, []),
+        [hiddenColumns],
+    );
+
     const handleOpenBulkUpload = () => {
         handleCloseQuickActions();
         setBulkUploadOpen(true);
         setBulkUploadPreview([]);
         setBulkUploadFileName('');
         setBulkUploadError(null);
+    };
+
+    const handleOpenQuickFilterMenu = (event: React.MouseEvent<HTMLButtonElement>) => {
+        setQuickFilterAnchorEl(event.currentTarget);
+    };
+
+    const handleCloseQuickFilterMenu = () => {
+        setQuickFilterAnchorEl(null);
+    };
+
+    const handleOpenQuickFilter = (mode: 'fty_sap' | 'gtn') => {
+        handleCloseQuickFilterMenu();
+        setQuickFilterFtySapInput(quickFilterFtySapValues.join('\n'));
+        setQuickFilterGtnInput(quickFilterGtnValues.join('\n'));
+        setQuickFilterDialogMode(mode);
+        setQuickFilterOpen(true);
+    };
+
+    const handleCloseQuickFilter = () => {
+        setQuickFilterOpen(false);
+    };
+
+    const handleApplyQuickFilter = () => {
+        setQuickFilterFtySapValues(parseMultiValueList(quickFilterFtySapInput).map((value) => value.toLowerCase()));
+        setQuickFilterGtnValues(parseMultiValueList(quickFilterGtnInput).map((value) => value.toLowerCase()));
+        setQuickFilterOpen(false);
+    };
+
+    const handleClearQuickFilter = () => {
+        setQuickFilterFtySapInput('');
+        setQuickFilterGtnInput('');
+        setQuickFilterFtySapValues([]);
+        setQuickFilterGtnValues([]);
     };
 
     const handleOpenBulkCancel = () => {
@@ -1139,6 +1245,48 @@ export default function OrderDataPage() {
 
                         updatedCount += data?.length ?? 0;
                     }
+                } else if (bulkChangeField === 'gtn') {
+                    const { data: rowsToUpdate, error: readError } = await supabase
+                        .from(TABLE_NAME)
+                        .select('id, gtn, old_gtn, changes')
+                        .eq('fty_sap', update.ftySap);
+
+                    if (readError) {
+                        throw new Error(readError.message);
+                    }
+
+                    for (const row of rowsToUpdate ?? []) {
+                        const previousGtn = String(row.gtn ?? '').trim();
+                        const newGtn = update.newValue.trim();
+
+                        const updatePayload: {
+                            gtn: string;
+                            old_gtn?: string;
+                            changes?: string;
+                        } = {
+                            gtn: update.newValue,
+                        };
+
+                        if (previousGtn && previousGtn !== newGtn) {
+                            updatePayload.old_gtn = previousGtn;
+                            const changeMessage = `gtn change from ${previousGtn} to ${newGtn}`;
+                            updatePayload.changes = row.changes
+                                ? `${row.changes} | ${changeMessage}`
+                                : changeMessage;
+                        }
+
+                        const { data, error } = await supabase
+                            .from(TABLE_NAME)
+                            .update(updatePayload)
+                            .eq('id', row.id)
+                            .select('id');
+
+                        if (error) {
+                            throw new Error(error.message);
+                        }
+
+                        updatedCount += data?.length ?? 0;
+                    }
                 } else {
                     const { data, error } = await supabase
                         .from(TABLE_NAME)
@@ -1258,6 +1406,23 @@ export default function OrderDataPage() {
             setFormError(error instanceof Error ? error.message : 'Failed to validate form values.');
             setSaving(false);
             return;
+        }
+
+        if (dialogMode === 'edit' && editingId) {
+            const existingRow = rows.find((row) => row.id === editingId);
+            const previousGtn = String(existingRow?.gtn ?? '').trim();
+            const nextGtn = form.gtn.trim();
+            const existingChanges = String(existingRow?.changes ?? '').trim();
+
+            if (previousGtn && previousGtn !== nextGtn) {
+                payload.old_gtn = previousGtn;
+
+                const alreadyHasChangeLog = form.changes.trim().length > 0;
+                if (!alreadyHasChangeLog) {
+                    const changeMessage = `gtn change from ${previousGtn} to ${nextGtn || '-'}`;
+                    payload.changes = existingChanges ? `${existingChanges} | ${changeMessage}` : changeMessage;
+                }
+            }
         }
 
         if (dialogMode === 'add') {
@@ -1385,6 +1550,20 @@ export default function OrderDataPage() {
                             </FormControl>
                             <Button
                                 variant="outlined"
+                                startIcon={<ViewColumnIcon fontSize="small" />}
+                                onClick={(event) => setColumnsMenuAnchor(event.currentTarget)}
+                            >
+                                Columns
+                            </Button>
+                            <Button
+                                variant="outlined"
+                                endIcon={<ArrowDropDownIcon />}
+                                onClick={handleOpenQuickFilterMenu}
+                            >
+                                Quick Filter
+                            </Button>
+                            <Button
+                                variant="outlined"
                                 endIcon={<ArrowDropDownIcon />}
                                 onClick={handleOpenQuickActions}
                                 sx={{ ml: { xs: 0, md: 'auto' } }}
@@ -1392,6 +1571,19 @@ export default function OrderDataPage() {
                                 Quick Actions
                             </Button>
                         </Box>
+
+                        <Menu
+                            anchorEl={columnsMenuAnchor}
+                            open={Boolean(columnsMenuAnchor)}
+                            onClose={() => setColumnsMenuAnchor(null)}
+                        >
+                            {ORDER_TABLE_COLUMN_DEFINITIONS.map((column) => (
+                                <MenuItem key={column.key} dense onClick={() => toggleColumn(column.key)}>
+                                    <Checkbox size="small" checked={isColumnVisible(column.key)} sx={{ p: 0.5, mr: 1 }} />
+                                    <ListItemText primary={column.label} />
+                                </MenuItem>
+                            ))}
+                        </Menu>
 
                         <Menu
                             anchorEl={quickActionsAnchorEl}
@@ -1421,6 +1613,21 @@ export default function OrderDataPage() {
                             <MenuItem onClick={() => { handleOpenBulkChange('destination'); }}>
                                 <EditIcon fontSize="small" sx={{ mr: 1 }} />
                                 Bulk Change Destination
+                            </MenuItem>
+                        </Menu>
+
+                        <Menu
+                            anchorEl={quickFilterAnchorEl}
+                            open={quickFilterMenuOpen}
+                            onClose={handleCloseQuickFilterMenu}
+                        >
+                            <MenuItem onClick={() => { handleOpenQuickFilter('fty_sap'); }}>
+                                <SearchIcon fontSize="small" sx={{ mr: 1 }} />
+                                Multi FTY SAP
+                            </MenuItem>
+                            <MenuItem onClick={() => { handleOpenQuickFilter('gtn'); }}>
+                                <SearchIcon fontSize="small" sx={{ mr: 1 }} />
+                                Multi GTN
                             </MenuItem>
                         </Menu>
 
@@ -1469,6 +1676,7 @@ export default function OrderDataPage() {
                                     columnSorting
                                     dropdownMenu
                                     filters
+                                    hiddenColumns={{ columns: hiddenColumnIndexes, indicators: false }}
                                     navigableHeaders
                                     licenseKey="non-commercial-and-evaluation"
                                     afterSelectionEnd={(row) => {
@@ -1656,6 +1864,46 @@ export default function OrderDataPage() {
                     <Button variant="contained" onClick={handleConfirmBulkCancel} disabled={bulkCancelBusy}>
                         {bulkCancelBusy ? 'Cancelling...' : 'Confirm Cancel'}
                     </Button>
+                </DialogActions>
+            </Dialog>
+
+            <Dialog open={quickFilterOpen} onClose={handleCloseQuickFilter} fullWidth maxWidth="sm">
+                <DialogTitle>
+                    {quickFilterDialogMode === 'fty_sap'
+                        ? 'Quick Filter - Multi FTY SAP'
+                        : 'Quick Filter - Multi GTN'}
+                </DialogTitle>
+                <DialogContent dividers>
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                        Enter one or more values separated by newline, comma, semicolon, or tab.
+                    </Typography>
+                    {quickFilterDialogMode !== 'gtn' && (
+                        <TextField
+                            fullWidth
+                            label="Multi FTY SAP"
+                            value={quickFilterFtySapInput}
+                            onChange={(event) => { setQuickFilterFtySapInput(event.target.value); }}
+                            multiline
+                            minRows={4}
+                            placeholder={'12345\n12346\n12347'}
+                        />
+                    )}
+                    {quickFilterDialogMode !== 'fty_sap' && (
+                        <TextField
+                            fullWidth
+                            label="Multi GTN"
+                            value={quickFilterGtnInput}
+                            onChange={(event) => { setQuickFilterGtnInput(event.target.value); }}
+                            multiline
+                            minRows={4}
+                            placeholder={'450000001\n450000002\n450000003'}
+                        />
+                    )}
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={handleClearQuickFilter}>Clear Applied Filter</Button>
+                    <Button onClick={handleCloseQuickFilter}>Close</Button>
+                    <Button variant="contained" onClick={handleApplyQuickFilter}>Apply Filter</Button>
                 </DialogActions>
             </Dialog>
 
