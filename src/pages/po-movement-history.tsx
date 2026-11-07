@@ -211,6 +211,7 @@ export default function PoMovementHistoryPage() {
     const [dateTo, setDateTo] = React.useState('');
 
     const [summary, setSummary] = React.useState({ total: 0, in: 0, out: 0, completed: 0, pending: 0 });
+    const lastFetchKeyRef = React.useRef<string | null>(null);
 
     // Debounce the search box so we don't fire a query per keystroke.
     React.useEffect(() => {
@@ -241,7 +242,7 @@ export default function PoMovementHistoryPage() {
         }
     }, []);
 
-    const fetchRows = React.useCallback(async () => {
+    const fetchRows = React.useCallback(async (force = false) => {
         setLoading(true);
         setError(null);
 
@@ -251,6 +252,20 @@ export default function PoMovementHistoryPage() {
             normalizedFrom && normalizedTo && normalizedFrom > normalizedTo ? normalizedTo : normalizedFrom;
         const effectiveTo =
             normalizedFrom && normalizedTo && normalizedFrom > normalizedTo ? normalizedFrom : normalizedTo;
+
+        const fetchKey = JSON.stringify({
+            search,
+            statusFilter,
+            effectiveFrom,
+            effectiveTo,
+        });
+
+        if (!force && lastFetchKeyRef.current === fetchKey) {
+            setLoading(false);
+            return;
+        }
+
+        lastFetchKeyRef.current = fetchKey;
 
         const buildQuery = () => {
             let query = supabase
@@ -337,7 +352,7 @@ export default function PoMovementHistoryPage() {
 
     function handleRefresh() {
         fetchSummary();
-        fetchRows();
+        fetchRows(true);
     }
 
     function clearDateRange() {

@@ -30,6 +30,7 @@ import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import { useAuth } from '../context/AuthContext';
 import { useColorMode } from '../context/ColorModeContext';
 import { Button } from '@mui/material';
+import SidebarDiskUsageIndicator from './SidebarDiskUsageIndicator';
 
 const DRAWER_WIDTH = 240;
 const DRAWER_WIDTH_COLLAPSED = 64;
@@ -37,7 +38,7 @@ const DRAWER_WIDTH_COLLAPSED = 64;
 const navItems = [
     { label: 'Overview', icon: <DashboardIcon />, href: '/dashboard' },
     { label: 'ILA Input History', icon: <NoteAltIcon />, href: '/ila-input-history' },
-    { label: 'Order Data', icon: <Inventory2Icon />, href: '/order-data' },
+    { label: 'Purchase Orders', icon: <Inventory2Icon />, href: '/order-data' },
     { label: 'PO Movement', icon: <SwapHorizIcon />, href: '/po-movement-history' },
     { label: 'Departments', icon: <GroupIcon />, href: '/departments' },
     { label: 'Input Types', icon: <SettingsIcon />, href: '/input-types' },

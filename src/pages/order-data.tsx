@@ -17,6 +17,7 @@ import FormControl from '@mui/material/FormControl';
 import FormControlLabel from '@mui/material/FormControlLabel';
 import IconButton from '@mui/material/IconButton';
 import InputAdornment from '@mui/material/InputAdornment';
+import InputBase from '@mui/material/InputBase';
 import InputLabel from '@mui/material/InputLabel';
 import ListItemText from '@mui/material/ListItemText';
 import Menu from '@mui/material/Menu';
@@ -418,6 +419,7 @@ type BulkChangeRow = {
 type UploadFieldKey = Exclude<keyof FormState, 'cancel_status'>;
 
 const EMPTY_BULK_CHANGE_ROW: BulkChangeRow = { ftySap: '', newValue: '' };
+const BULK_CHANGE_TABLE_MAX_HEIGHT = 300;
 
 function hasBulkChangeRowValue(row: BulkChangeRow): boolean {
     return row.ftySap.trim().length > 0 || row.newValue.trim().length > 0;
@@ -620,6 +622,7 @@ const BULK_PREVIEW_HEADERS = [
 export default function OrderDataPage() {
     const { user } = useAuth();
     const { mode } = useColorMode();
+    const userId = user?.id;
 
     const [rows, setRows] = React.useState<OrderData[]>([]);
     const [selectedRowId, setSelectedRowId] = React.useState<number | null>(null);
@@ -664,6 +667,7 @@ export default function OrderDataPage() {
     const [bulkChangeRows, setBulkChangeRows] = React.useState<BulkChangeRow[]>([{ ...EMPTY_BULK_CHANGE_ROW }]);
     const [bulkChangeError, setBulkChangeError] = React.useState<string | null>(null);
     const [bulkChangeBusy, setBulkChangeBusy] = React.useState(false);
+    const [bulkChangePastePending, startBulkChangePasteTransition] = React.useTransition();
 
     const [dialogOpen, setDialogOpen] = React.useState(false);
     const [dialogMode, setDialogMode] = React.useState<'add' | 'edit'>('add');
@@ -700,9 +704,9 @@ export default function OrderDataPage() {
     }, []);
 
     React.useEffect(() => {
-        if (!user) return;
+        if (!userId) return;
         fetchRows();
-    }, [user, fetchRows]);
+    }, [userId, fetchRows]);
 
     const filteredRows = React.useMemo(() => {
         const cancelStatusFilteredRows = rows.filter((row) => {
@@ -1323,7 +1327,7 @@ export default function OrderDataPage() {
     ) => {
         const value = event.target.value;
         setBulkChangeRows((prev) => {
-            const next = prev.map((row) => ({ ...row }));
+            const next = prev.slice();
             if (!next[rowIndex]) {
                 next[rowIndex] = { ...EMPTY_BULK_CHANGE_ROW };
             }
@@ -1350,27 +1354,30 @@ export default function OrderDataPage() {
 
         event.preventDefault();
 
-        setBulkChangeRows((prev) => {
-            const next = prev.map((row) => ({ ...row }));
+        startBulkChangePasteTransition(() => {
+            setBulkChangeRows((prev) => {
+                const next = prev.slice();
 
-            matrix.forEach((rowValues, pastedRowOffset) => {
-                const targetRow = rowIndex + pastedRowOffset;
-                if (!next[targetRow]) {
-                    next[targetRow] = { ...EMPTY_BULK_CHANGE_ROW };
-                }
+                matrix.forEach((rowValues, pastedRowOffset) => {
+                    const targetRow = rowIndex + pastedRowOffset;
+                    const current = next[targetRow] ?? EMPTY_BULK_CHANGE_ROW;
+                    const updated: BulkChangeRow = { ...current };
 
-                rowValues.forEach((cellValue, pastedColumnOffset) => {
-                    const targetColumn = columnIndex + pastedColumnOffset;
-                    if (targetColumn > 1) return;
-                    if (targetColumn === 0) {
-                        next[targetRow].ftySap = cellValue.trim();
-                    } else {
-                        next[targetRow].newValue = cellValue.trim();
-                    }
+                    rowValues.forEach((cellValue, pastedColumnOffset) => {
+                        const targetColumn = columnIndex + pastedColumnOffset;
+                        if (targetColumn > 1) return;
+                        if (targetColumn === 0) {
+                            updated.ftySap = cellValue.trim();
+                        } else {
+                            updated.newValue = cellValue.trim();
+                        }
+                    });
+
+                    next[targetRow] = updated;
                 });
-            });
 
-            return normalizeBulkChangeRows(next);
+                return normalizeBulkChangeRows(next);
+            });
         });
     };
 
@@ -1474,7 +1481,7 @@ export default function OrderDataPage() {
     return (
         <AppLayout>
             <Head>
-                <title>Order Data - LabelManager</title>
+                <title>Purchase Order Data - LabelManager</title>
                 <meta name="viewport" content="width=device-width, initial-scale=1" />
             </Head>
 
@@ -1483,10 +1490,10 @@ export default function OrderDataPage() {
                     <Inventory2Icon sx={{ color: 'primary.main', fontSize: 32 }} />
                     <Box>
                         <Typography variant="h4" fontWeight={700}>
-                            Order Data
+                            Purchase Order Data
                         </Typography>
                         <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-                            Manage records from public.order_data
+                            Manage purchase order data.
                         </Typography>
                     </Box>
                     <Box sx={{ ml: 'auto', display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -1942,9 +1949,14 @@ export default function OrderDataPage() {
                     {`Bulk Change ${getBulkChangeFieldLabel(bulkChangeField)}`}
                 </DialogTitle>
                 <DialogContent dividers>
-                    <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
                         Paste directly from Excel. The table auto-adds rows when multiple lines are pasted.
                     </Typography>
+                    {bulkChangePastePending && (
+                        <Alert severity="info" sx={{ mb: 1.5 }}>
+                            Applying pasted rows...
+                        </Alert>
+                    )}
                     <Box
                         sx={{
                             border: (theme) => `1px solid ${theme.palette.divider}`,
@@ -1960,15 +1972,15 @@ export default function OrderDataPage() {
                                 borderBottom: (theme) => `1px solid ${theme.palette.divider}`,
                             }}
                         >
-                            <Box sx={{ px: 1.5, py: 1, borderRight: (theme) => `1px solid ${theme.palette.divider}` }}>
-                                <Typography variant="subtitle2">FTY SAP</Typography>
+                            <Box sx={{ px: 1, py: 0.75, borderRight: (theme) => `1px solid ${theme.palette.divider}` }}>
+                                <Typography variant="subtitle2" sx={{ fontSize: 13 }}>FTY SAP</Typography>
                             </Box>
-                            <Box sx={{ px: 1.5, py: 1 }}>
-                                <Typography variant="subtitle2">{getBulkChangeNewValueHeader(bulkChangeField)}</Typography>
+                            <Box sx={{ px: 1, py: 0.75 }}>
+                                <Typography variant="subtitle2" sx={{ fontSize: 13 }}>{getBulkChangeNewValueHeader(bulkChangeField)}</Typography>
                             </Box>
                         </Box>
 
-                        <Box sx={{ maxHeight: 360, overflowY: 'auto' }}>
+                        <Box sx={{ maxHeight: BULK_CHANGE_TABLE_MAX_HEIGHT, overflowY: 'auto' }}>
                             {bulkChangeRows.map((row, index) => (
                                 <Box
                                     key={`bulk-change-row-${index}`}
@@ -1981,29 +1993,41 @@ export default function OrderDataPage() {
                                     }}
                                 >
                                     <Box sx={{ borderRight: (theme) => `1px solid ${theme.palette.divider}` }}>
-                                        <TextField
+                                        <InputBase
                                             fullWidth
-                                            size="small"
-                                            variant="standard"
                                             value={row.ftySap}
                                             onChange={handleBulkChangeRowChange(index, 'ftySap')}
                                             onPaste={handleBulkChangePaste(index, 0)}
                                             placeholder={index === 0 ? 'e.g. 12345' : undefined}
                                             disabled={bulkChangeBusy}
-                                            InputProps={{ disableUnderline: true, sx: { px: 1.5, py: 1 } }}
+                                            inputProps={{ 'aria-label': `bulk-change-fty-sap-${index}` }}
+                                            sx={{
+                                                width: '100%',
+                                                px: 1,
+                                                py: 0.5,
+                                                fontSize: 13,
+                                                lineHeight: 1.3,
+                                                minHeight: 32,
+                                            }}
                                         />
                                     </Box>
                                     <Box>
-                                        <TextField
+                                        <InputBase
                                             fullWidth
-                                            size="small"
-                                            variant="standard"
                                             value={row.newValue}
                                             onChange={handleBulkChangeRowChange(index, 'newValue')}
                                             onPaste={handleBulkChangePaste(index, 1)}
                                             placeholder={index === 0 ? 'e.g. NEW_VALUE' : undefined}
                                             disabled={bulkChangeBusy}
-                                            InputProps={{ disableUnderline: true, sx: { px: 1.5, py: 1 } }}
+                                            inputProps={{ 'aria-label': `bulk-change-new-value-${index}` }}
+                                            sx={{
+                                                width: '100%',
+                                                px: 1,
+                                                py: 0.5,
+                                                fontSize: 13,
+                                                lineHeight: 1.3,
+                                                minHeight: 32,
+                                            }}
                                         />
                                     </Box>
                                 </Box>

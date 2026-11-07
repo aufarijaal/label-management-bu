@@ -28,8 +28,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         const {
             data: { subscription }
-        } = supabase.auth.onAuthStateChange((_event, session) => {
-            setSession(session);
+        } = supabase.auth.onAuthStateChange((event, nextSession) => {
+            // Ignore token refresh churn so pages don't re-fetch on tab focus.
+            if (event === 'TOKEN_REFRESHED') {
+                setLoading(false);
+                return;
+            }
+
+            setSession(nextSession);
             setLoading(false);
         });
 

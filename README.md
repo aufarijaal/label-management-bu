@@ -50,6 +50,17 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000) in your browser to see the result.
 
+## Disk Usage Indicator Setup
+
+The sidebar disk usage indicator uses Supabase Management API endpoints from a server-side API route.
+
+Add these server-only environment variables:
+
+- `SUPABASE_MANAGEMENT_API_TOKEN` - Supabase Management API personal access token
+- `SUPABASE_PROJECT_REF` - Supabase project ref (for example: `abcdefghijklmnopqrst`)
+
+These values must not be exposed to the browser.
+
 ## Project Structure
 
 ```
@@ -95,6 +106,7 @@ Modify `content/data/config.json` to update the header, footer, and site setting
 - `npm run build` - Build for production
 - `npm start` - Start production server
 - `npm run prettier` - Format code with Prettier
+- `npm test` - Run unit and component tests with Vitest
 
 ## License
 
