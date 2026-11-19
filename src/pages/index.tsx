@@ -13,10 +13,12 @@ import LabelIcon from '@mui/icons-material/Label';
 import PlaylistAddCheckIcon from '@mui/icons-material/PlaylistAddCheck';
 import LocalShippingIcon from '@mui/icons-material/LocalShipping';
 import ImageIcon from '@mui/icons-material/Image';
+import TaskAltIcon from '@mui/icons-material/TaskAlt';
 import { supabase } from '../lib/supabaseClient';
 import { useAuth } from '../context/AuthContext';
 
 const MENU_ITEMS = [
+    { label: 'Pengambilan Repro', href: '/repro-movement', icon: TaskAltIcon },
     { label: 'PO Movement', href: '/po-movement', icon: LocalShippingIcon },
     { label: 'Visual Maker', href: '/visual-maker', icon: ImageIcon },
     { label: 'Variant Sequence', href: '/variant-material-sequence', icon: PlaylistAddCheckIcon }

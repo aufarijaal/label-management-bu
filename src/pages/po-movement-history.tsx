@@ -7,6 +7,10 @@ import Card from '@mui/material/Card';
 import CardContent from '@mui/material/CardContent';
 import CircularProgress from '@mui/material/CircularProgress';
 import Container from '@mui/material/Container';
+import Dialog from '@mui/material/Dialog';
+import DialogActions from '@mui/material/DialogActions';
+import DialogContent from '@mui/material/DialogContent';
+import DialogTitle from '@mui/material/DialogTitle';
 import FormControl from '@mui/material/FormControl';
 import IconButton from '@mui/material/IconButton';
 import InputAdornment from '@mui/material/InputAdornment';
@@ -17,6 +21,8 @@ import TextField from '@mui/material/TextField';
 import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
 import Grid from '@mui/material/Grid';
+import Alert from '@mui/material/Alert';
+
 import ClearIcon from '@mui/icons-material/Clear';
 import LoginIcon from '@mui/icons-material/Login';
 import LogoutIcon from '@mui/icons-material/Logout';
@@ -26,9 +32,10 @@ import SearchIcon from '@mui/icons-material/Search';
 import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
 import TaskAltIcon from '@mui/icons-material/TaskAlt';
 import Inventory2Icon from '@mui/icons-material/Inventory2';
+import ListAltIcon from '@mui/icons-material/ListAlt';
 import PendingActionsIcon from '@mui/icons-material/PendingActions';
 
-import { HotTable } from '@handsontable/react-wrapper';
+import { HotTable, type HotTableRef } from '@handsontable/react-wrapper';
 import { registerAllModules } from 'handsontable/registry';
 import type Handsontable from 'handsontable';
 import 'handsontable/styles/handsontable.min.css';
@@ -213,6 +220,18 @@ export default function PoMovementHistoryPage() {
     const [summary, setSummary] = React.useState({ total: 0, in: 0, out: 0, completed: 0, pending: 0 });
     const lastFetchKeyRef = React.useRef<string | null>(null);
 
+    // Multi PO Search dialog
+    const [multiPoSearchOpen, setMultiPoSearchOpen] = React.useState(false);
+    const [multiPoSearchInput, setMultiPoSearchInput] = React.useState('');
+    const [multiPoSearchResults, setMultiPoSearchResults] = React.useState<MovementRow[]>([]);
+    const [multiPoSearchLoading, setMultiPoSearchLoading] = React.useState(false);
+    const [multiPoSearchError, setMultiPoSearchError] = React.useState<string | null>(null);
+
+    const [multiPoOpen, setMultiPoOpen] = React.useState(false);
+    const [multiPoText, setMultiPoText] = React.useState('');
+    const [multiPoList, setMultiPoList] = React.useState<string[]>([]);
+    const [multiPoNotFound, setMultiPoNotFound] = React.useState<string[]>([]);
+
     // Debounce the search box so we don't fire a query per keystroke.
     React.useEffect(() => {
         const t = setTimeout(() => setSearch(searchInput.trim()), 400);
@@ -258,6 +277,7 @@ export default function PoMovementHistoryPage() {
             statusFilter,
             effectiveFrom,
             effectiveTo,
+            multiPoList,
         });
 
         if (!force && lastFetchKeyRef.current === fetchKey) {
@@ -276,9 +296,10 @@ export default function PoMovementHistoryPage() {
             query = query.or('in_at.not.is.null,out_at.not.is.null');
 
             if (search) {
-                // Commas would break PostgREST's or() syntax, and %/_ are ilike wildcards.
-                const term = `%${search.replace(/[,%_]/g, ' ')}%`;
-                query = query.or(`fty_sap.ilike.${term},model_name.ilike.${term},art.ilike.${term}`);
+                const term = `%${search.replace(/[%_,()]/g, ' ').trim()}%`;
+                if (term !== '%%') {
+                    query = query.or(`fty_sap.ilike.${term},model_name.ilike.${term},art.ilike.${term}`);
+                }
             }
 
             switch (statusFilter) {
@@ -333,14 +354,21 @@ export default function PoMovementHistoryPage() {
             };
             allRows.sort((a, b) => activityTime(b) - activityTime(a));
 
-            setRows(allRows);
+            const filteredRows = multiPoList.length > 0
+                ? allRows.filter((row) => {
+                    const ftySap = (row.fty_sap ?? '').trim().toLowerCase();
+                    return multiPoList.some((po) => ftySap === po);
+                })
+                : allRows;
+
+            setRows(filteredRows);
         } catch (err) {
             console.error('Failed to load PO movement:', err);
             setError(err instanceof Error ? err.message : 'Unknown error');
             setRows([]);
         }
         setLoading(false);
-    }, [search, statusFilter, dateFrom, dateTo]);
+    }, [search, statusFilter, dateFrom, dateTo, multiPoList]);
 
     React.useEffect(() => {
         fetchSummary();
@@ -465,6 +493,8 @@ export default function PoMovementHistoryPage() {
         { label: 'Not Started', value: summary.pending, icon: <PendingActionsIcon />, color: 'text.secondary' },
     ];
 
+    const hotRef = React.useRef<HotTableRef>(null);
+
     return (
         <AppLayout>
             <Head>
@@ -584,48 +614,197 @@ export default function PoMovementHistoryPage() {
                                 <RefreshIcon />
                             </IconButton>
                         </Tooltip>
+                        <Button
+                            size="small"
+                            variant={multiPoList.length > 0 ? 'contained' : 'outlined'}
+                            startIcon={<ListAltIcon fontSize="small" />}
+                            onClick={() => setMultiPoOpen(true)}
+                            sx={{ whiteSpace: 'nowrap', height: 40 }}
+                        >
+                            {multiPoList.length > 0 ? `Multi PO (${multiPoList.length})` : 'Multi PO Search'}
+                        </Button>
                     </CardContent>
                 </Card>
 
-                {/* Movement table — Handsontable handles column sorting, per-column
-                    filters (via the header dropdown menu) and virtual scrolling natively. */}
-                <Card elevation={0} sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 3 }}>
-                    <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
-                        {loading ? (
-                            <Box sx={{ display: 'grid', placeItems: 'center', py: 8 }}>
-                                <CircularProgress size={32} />
-                            </Box>
-                        ) : error ? (
-                            <Box sx={{ display: 'grid', placeItems: 'center', py: 8 }}>
-                                <Typography color="error">Failed to load data: {error}</Typography>
-                            </Box>
-                        ) : rows.length === 0 ? (
-                            <Box sx={{ display: 'grid', placeItems: 'center', py: 8 }}>
-                                <SwapHorizIcon sx={{ fontSize: 40, color: 'text.disabled', mb: 1 }} />
-                                <Typography color="text.secondary">No PO movement records found.</Typography>
-                            </Box>
-                        ) : (
-                            <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 2, overflow: 'hidden' }}>
-                                <HotTable
-                                    theme={htTheme}
-                                    data={tableData}
-                                    columns={hotColumns}
-                                    colHeaders={HOT_HEADERS}
-                                    rowHeaders
-                                    width="100%"
-                                    height={540}
-                                    stretchH="all"
-                                    manualColumnResize
-                                    columnSorting
-                                    dropdownMenu
-                                    filters
-                                    navigableHeaders
-                                    licenseKey="non-commercial-and-evaluation"
-                                />
+                {/* Table */}
+                <Box sx={{ position: 'relative', mb: 4 }}>
+                    {loading && (
+                        <Box
+                            sx={{
+                                position: 'absolute',
+                                top: 0,
+                                left: 0,
+                                right: 0,
+                                bottom: 0,
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                bgcolor: 'background.paper',
+                                zIndex: 1,
+                            }}
+                        >
+                            <CircularProgress />
+                        </Box>
+                    )}
+                    <HotTable
+                        ref={hotRef}
+                        data={tableData}
+                        colHeaders={HOT_HEADERS}
+                        columns={hotColumns}
+                        rowHeights={40}
+                        width="100%"
+                        height="calc(100vh - 400px)"
+                        licenseKey="non-commercial-and-evaluation"
+                        theme={htTheme}
+                    />
+                </Box>
+
+                {/* Error alert */}
+                {error ? (
+                    <Alert severity="error" onClose={() => setError(null)} sx={{ mb: 2 }}>
+                        {error}
+                    </Alert>
+                ) : null}
+
+                {/* Multi PO Search dialog */}
+                <Dialog
+                    open={multiPoSearchOpen}
+                    onClose={() => setMultiPoSearchOpen(false)}
+                    maxWidth="md"
+                    fullWidth
+                >
+                    <DialogTitle>Multi PO Search</DialogTitle>
+                    <DialogContent>
+                        <TextField
+                            autoFocus
+                            margin="dense"
+                            label="Enter PO numbers (comma-separated)"
+                            type="text"
+                            fullWidth
+                            variant="outlined"
+                            value={multiPoSearchInput}
+                            onChange={(e) => setMultiPoSearchInput(e.target.value)}
+                            InputProps={{
+                                startAdornment: (
+                                    <InputAdornment position="start">
+                                        <SearchIcon />
+                                    </InputAdornment>
+                                ),
+                            }}
+                        />
+                        {multiPoSearchLoading && (
+                            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', py: 2 }}>
+                                <CircularProgress size={24} />
                             </Box>
                         )}
-                    </CardContent>
-                </Card>
+                        {multiPoSearchResults.length > 0 ? (
+                            <Box sx={{ mt: 2 }}>
+                                <Typography variant="subtitle1" fontWeight={500} gutterBottom>
+                                    Found {multiPoSearchResults.length} POs:
+                                </Typography>
+                                <Box
+                                    sx={{
+                                        display: 'grid',
+                                        gridTemplateColumns: 'repeat(4, 1fr)',
+                                        gap: 1,
+                                        bgcolor: 'background.paper',
+                                        p: 2,
+                                        borderRadius: 1,
+                                        border: '1px solid',
+                                        borderColor: 'divider',
+                                    }}
+                                >
+                                    {multiPoSearchResults.map((row) => (
+                                        <Box
+                                            key={row.id}
+                                            sx={{
+                                                p: 1.5,
+                                                borderRadius: 1,
+                                                bgcolor: 'action.hover',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'space-between',
+                                            }}
+                                        >
+                                            <Typography variant="body2" noWrap>
+                                                {row.fty_sap}
+                                            </Typography>
+                                            <Button
+                                                size="small"
+                                                variant="contained"
+                                                onClick={() => {
+                                                    setMultiPoList((prev) => {
+                                                        const next = Array.from(new Set([...prev, row.fty_sap]));
+                                                        return next;
+                                                    });
+                                                    setMultiPoSearchOpen(false);
+                                                }}
+                                            >
+                                                Add
+                                            </Button>
+                                        </Box>
+                                    ))}
+                                </Box>
+                            </Box>
+                        ) : null}
+                        {multiPoSearchError ? (
+                            <Alert severity="error" sx={{ mt: 2 }}>
+                                {multiPoSearchError}
+                            </Alert>
+                        ) : null}
+                    </DialogContent>
+                    <DialogActions>
+                        <Button onClick={() => setMultiPoSearchOpen(false)}>Cancel</Button>
+                    </DialogActions>
+                </Dialog>
+
+                {/* Multi PO entry dialog */}
+                <Dialog
+                    open={multiPoOpen}
+                    onClose={() => setMultiPoOpen(false)}
+                    fullWidth
+                    maxWidth="xs"
+                >
+                    <DialogTitle>Multi PO Search</DialogTitle>
+                    <DialogContent>
+                        <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+                            Enter one FTY SAP / PO No per line.
+                        </Typography>
+                        <TextField
+                            multiline
+                            rows={8}
+                            fullWidth
+                            placeholder={'PO-001\nPO-002\nPO-003'}
+                            value={multiPoText}
+                            onChange={(e) => {
+                                setMultiPoText(e.target.value);
+                                setMultiPoNotFound([]);
+                            }}
+                            size="small"
+                        />
+                    </DialogContent>
+                    <DialogActions>
+                        <Button onClick={() => setMultiPoOpen(false)}>Close</Button>
+                        <Button
+                            variant="contained"
+                            onClick={() => {
+                                const list = Array.from(new Set(
+                                    multiPoText
+                                        .split(/\r?\n/)
+                                        .map((value) => value.trim().toLowerCase())
+                                        .filter(Boolean)
+                                ));
+                                const available = new Set(rows.map((row) => (row.fty_sap ?? '').trim().toLowerCase()));
+                                setMultiPoList(list);
+                                setMultiPoText(list.join('\n'));
+                                setMultiPoNotFound(list.filter((po) => !available.has(po)));
+                                setMultiPoOpen(false);
+                            }}
+                        >
+                            Apply
+                        </Button>
+                    </DialogActions>
+                </Dialog>
             </Container>
         </AppLayout>
     );

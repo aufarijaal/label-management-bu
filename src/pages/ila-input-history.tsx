@@ -183,7 +183,9 @@ const COLUMNS: { key: ColumnKey; label: string }[] = [
     { key: 'created_at', label: 'Created At' },
     { key: 'dept_id', label: 'Department' },
     { key: 'input_id', label: 'Input Type' },
-    { key: 'done', label: 'Status' },
+    { key: 'status', label: 'Status' },
+    { key: 'taken_by', label: 'Taken By' },
+    { key: 'taken_at', label: 'Taken At' },
     { key: 'short_group_code', label: 'Short Group Code' },
     { key: 'label_id', label: 'Label ID' },
 ];
@@ -480,7 +482,7 @@ export default function AveryNotesPage() {
 
         let itemsQuery = supabase
             .from('ila_avery_note_items')
-            .select('id, seq, po_no, art, remark, print_qty, created_at, done, input_id, dept_id, returned, short_group_code, label_id')
+            .select('id, seq, po_no, art, remark, print_qty, created_at, status, input_id, dept_id, returned, short_group_code, label_id, taken_by, taken_at')
             .order('seq', { ascending: true });
 
         // Pull only the rows within the selected date range from the
@@ -540,7 +542,7 @@ export default function AveryNotesPage() {
             if (inputFilter.length > 0) {
                 if (!r.input_id || !inputFilter.includes(r.input_id)) return false;
             }
-            const status = normalizeStatus(r.done);
+            const status = normalizeStatus(r.status);
             if (doneFilter === 'done' && status !== 'done') return false;
             if (doneFilter === 'pending' && status !== 'pending') return false;
             if (doneFilter === 'cancel' && status !== 'cancel') return false;
@@ -628,14 +630,17 @@ export default function AveryNotesPage() {
                     case 'created_at':
                         record[col.label] = formatDateTime(row.created_at);
                         break;
+                    case 'taken_at':
+                        record[col.label] = formatDateTime(row.taken_at);
+                        break;
                     case 'dept_id':
                         record[col.label] = row.dept_id ? (deptMap[row.dept_id] ?? row.dept_id) : '';
                         break;
                     case 'input_id':
                         record[col.label] = row.input_id ? (inputMap[row.input_id] ?? row.input_id) : '';
                         break;
-                    case 'done':
-                        record[col.label] = statusLabel(row.done);
+                    case 'status':
+                        record[col.label] = statusLabel(row.status);
                         break;
                     default:
                         record[col.label] = row[col.key] ?? '';
@@ -658,14 +663,14 @@ export default function AveryNotesPage() {
     // Rows eligible for the report-format export: unassigned input_id and
     // the "PO" input type are excluded per the report's requirements.
     const reportEligibleRows = React.useMemo(
-        () => filteredRows.filter((r) => r.input_id && r.input_id !== 'po' && normalizeStatus(r.done) !== 'cancel'),
+        () => filteredRows.filter((r) => r.input_id && r.input_id !== 'po' && normalizeStatus(r.status) !== 'cancel'),
         [filteredRows]
     );
 
     // Rows eligible for PO replenishment summary export: sequence 1 is
     // excluded, and rows without a PO number are skipped.
     const poReplenishmentRows = React.useMemo(
-        () => filteredRows.filter((r) => r.seq !== 1 && Boolean((r.po_no ?? '').trim()) && normalizeStatus(r.done) !== 'cancel'),
+        () => filteredRows.filter((r) => r.seq !== 1 && Boolean((r.po_no ?? '').trim()) && normalizeStatus(r.status) !== 'cancel'),
         [filteredRows]
     );
 
@@ -958,7 +963,7 @@ export default function AveryNotesPage() {
         async (changes: [number, string | number, unknown, unknown][]) => {
             for (const [rowIndex, prop, oldValue, newValue] of changes) {
                 const key = String(prop) as ColumnKey;
-                if (!['remark', 'dept_id', 'input_id', 'returned', 'done'].includes(key)) continue;
+                if (!['remark', 'dept_id', 'input_id', 'returned', 'status'].includes(key)) continue;
 
                 const row = pagedRows[rowIndex];
                 if (!row?.id) continue;
@@ -1013,7 +1018,9 @@ export default function AveryNotesPage() {
                     case 'print_qty':
                         return { data: col.key, readOnly: true, renderer: printQtyRenderer };
                     case 'created_at':
-                        return { data: col.key, readOnly: true, renderer: dateRenderer };
+                        return { data: col.key, readOnly: true, renderer: dateRenderer }; 
+                    case 'taken_at':
+                        return { data: col.key, readOnly: true, renderer: dateRenderer }; 
                     case 'dept_id':
                         return {
                             data: col.key,
@@ -1034,7 +1041,7 @@ export default function AveryNotesPage() {
                             readOnly: false,
                             renderer: inputRenderer,
                         };
-                    case 'done':
+                    case 'status':
                         return {
                             data: col.key,
                             type: 'dropdown',

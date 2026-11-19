@@ -18,12 +18,14 @@ export type AveryNoteItem = {
     remark: string | null;
     print_qty: number | null;
     created_at: string | null;
-    done: 'pending' | 'cancel' | 'done' | boolean | null;
+    status: 'pending' | 'cancel' | 'done' | null;
     input_id: string | null;
     dept_id: string | null;
     returned: number | null;
     short_group_code: string | null;
     label_id: string | null;
+    taken_by: string | null;
+    taken_at: string | null;
 };
 
 export type OrderData = {
