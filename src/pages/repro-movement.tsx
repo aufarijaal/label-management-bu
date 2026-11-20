@@ -1,6 +1,5 @@
 import * as React from 'react';
 import Head from 'next/head';
-import { useRouter } from 'next/router';
 import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
@@ -20,7 +19,6 @@ import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 import SearchIcon from '@mui/icons-material/Search';
 import TaskAltIcon from '@mui/icons-material/TaskAlt';
-import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import EditIcon from '@mui/icons-material/Edit';
 
 import { supabase } from '../lib/supabaseClient';
@@ -30,7 +28,6 @@ const TABLE_NAME = 'ila_avery_note_items';
 const TAKER_NAME_KEY = 'repro_taker_name';
 
 export default function ReproMovementPage() {
-    const router = useRouter();
     const [query, setQuery] = React.useState('');
     const [rows, setRows] = React.useState<AveryNoteItem[]>([]);
     const [searching, setSearching] = React.useState(false);
@@ -202,15 +199,15 @@ export default function ReproMovementPage() {
             <Container maxWidth="lg" sx={{ py: { xs: 2, sm: 3 }, px: { xs: 1.5, sm: 3 } }}>
                 <Stack spacing={2.5}>
                     <Box>
-                        <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1} sx={{ mb: 1 }}>
-                            <Button
-                                variant="text"
-                                startIcon={<ArrowBackIcon />}
-                                onClick={() => router.push('/')}
-                                sx={{ px: 0, minWidth: 0, textTransform: 'none' }}
-                            >
-                                Kembali ke Home
-                            </Button>
+                        <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1}>
+                            <Box>
+                                <Typography variant="h5" component="h1" fontWeight={700}>
+                                    Pengambilan Repro
+                                </Typography>
+                                <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                                    Cari berdasarkan nomor GTN lalu konfirmasi pengambilan item.
+                                </Typography>
+                            </Box>
                             {takenBy && (
                                 <Chip
                                     icon={<EditIcon />}
@@ -224,12 +221,6 @@ export default function ReproMovementPage() {
                                 />
                             )}
                         </Stack>
-                        <Typography variant="h5" component="h1" fontWeight={700}>
-                            Pengambilan Repro
-                        </Typography>
-                        <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-                            Cari berdasarkan nomor GTN lalu konfirmasi pengambilan item.
-                        </Typography>
                     </Box>
 
                     <Box component="form" onSubmit={handleSubmit}>
